@@ -86,12 +86,12 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 
 	go func() {
 		log.Printf("Attempting to dial %s from local port %d", remoteAddr, localPort)
-		for i := 0; i < 10; i++ {
+		for range 100 {
 			if conn, err := dialer.Dial("tcp", remoteAddr.String()); err == nil {
 				connChan <- conn
 				return
 			}
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 
