@@ -205,7 +205,7 @@ func getUDPPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error)
 	}, nil
 }
 
-func punchUDPHole(resp *PeerResponse) (conn net.Conn, err error) {
+func punchUDPHole(resp *PeerResponse) (err error) {
 	peerAddress, err := net.ResolveUDPAddr("udp4", resp.peerAddress)
 
 	killGoroutines := make(chan byte, 10)
@@ -234,14 +234,14 @@ func punchUDPHole(resp *PeerResponse) (conn net.Conn, err error) {
 		if err != nil {
 			fmt.Println(err)
 			if time.Since(start).Seconds() > 20 {
-				return nil, fmt.Errorf("20 second UDP read timeout: %s", err)
+				return fmt.Errorf("20 second UDP read timeout: %s", err)
 			}
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		fmt.Println(string(buf[:n]), buf[:n])
 		if string(buf[:n]) == "ping" {
-			return net.Conn(resp.UDPConn), nil
+			return nil
 		}
 	}
 }
@@ -351,7 +351,43 @@ func chat(conn net.Conn) {
 			return
 		}
 		if _, err := conn.Write([]byte(text + "\n")); err != nil {
-			// log.Printf("Connection lost: %v", err)
+			log.Printf("Connection lost: %v", err)
+			return
+		}
+	}
+}
+func chatUDP(resp *PeerResponse) {
+	defer resp.UDPConn.Close()
+	log.Println("Enter a message and press Enter. Use 'exit' to quit.")
+	buff := make([]byte, 1024)
+	go func() {
+		for {
+			n, err := resp.UDPConn.Read(buff[0:])
+			if err != nil {
+				fmt.Println("read err", err)
+				return
+			}
+			fmt.Println(string(buff[:n]))
+		}
+	}()
+
+	pa, err := net.ResolveUDPAddr("udp", resp.peerAddress)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("> ")
+		text, _ := reader.ReadString('\n')
+		text = strings.TrimSpace(text)
+		if strings.ToLower(text) == "exit" {
+			return
+		}
+		_, err := resp.UDPConn.WriteToUDP([]byte(text+"\n"), pa)
+		if err != nil {
+			log.Printf("Connection lost: %v", err)
+
 			return
 		}
 	}
