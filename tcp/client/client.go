@@ -20,12 +20,8 @@ type Signal struct {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Fatalf("Usage: %s <server_addr (e.g., localhost:8080)>", os.Args[0])
-	}
 	serverAddr := os.Args[1]
 
-	log.Println("Connecting to server to get peer address...")
 	conn, err := net.Dial("tcp", serverAddr)
 	if err != nil {
 		log.Fatalf("Failed to connect to server: %v", err)
@@ -33,23 +29,19 @@ func main() {
 	defer conn.Close()
 
 	localPort := conn.LocalAddr().(*net.TCPAddr).Port
-	log.Printf("✅ Connected. We are using local port: %d. Waiting for peer...", localPort)
 
 	var peerSignal Signal
 	if err := json.NewDecoder(conn).Decode(&peerSignal); err != nil {
 		log.Fatalf("Failed to receive peer address from server: %v", err)
 	}
 	peerAddr := peerSignal.Address
-	// log.Printf("✅ Received peer address: %s", peerAddr)
 
 	conn.Close()
 
-	log.Println("Starting TCP hole punching...")
 	p2pConn, err := punchHole(localPort, peerAddr)
 	if err != nil {
 		log.Fatalf("❌ Hole punching failed: %v", err)
 	}
-	log.Println("✅ P2P connection established!")
 
 	chat(p2pConn)
 }
@@ -64,12 +56,9 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	connChan := make(chan net.Conn)
 	errChan := make(chan error, 2)
 
-	// Define the control function that uses our cross-platform helper.
-	// This function will be used for both the dialer and the listener.
 	controlFunc := func(network, address string, c syscall.RawConn) error {
 		var controlErr error
 		err := c.Control(func(fd uintptr) {
-			// Call our platform-specific helper function.
 			controlErr = setReuseAddr(fd)
 		})
 		if err != nil {
@@ -85,7 +74,6 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	}
 
 	go func() {
-		// log.Printf("Attempting to dial %s from local port %d", remoteAddr, localPort)
 		for range 100 {
 			if conn, err := dialer.Dial("tcp", remoteAddr.String()); err == nil {
 				connChan <- conn
@@ -100,7 +88,6 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	}
 
 	go func() {
-		// log.Printf("Attempting to listen on local port %d", localPort)
 		listener, err := lc.Listen(context.Background(), "tcp", localAddr.String())
 		if err != nil {
 			errChan <- err
@@ -132,7 +119,6 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	}
 }
 
-// chat function remains unchanged.
 func chat(conn net.Conn) {
 	defer conn.Close()
 	log.Println("Enter a message and press Enter. Use 'exit' to quit.")
