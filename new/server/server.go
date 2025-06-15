@@ -85,7 +85,9 @@ func client(conn net.Conn, hello ClientHello, publicAddr string) {
 		ResponseChan:  responseChan,
 	}
 
-	if _, loaded := waitingPeers.LoadOrStore(makePeeringKey(hello.UUID, hello.TargetIP), newPeer); loaded {
+	key := makePeeringKey(hello.UUID, hello.TargetIP)
+	fmt.Println("CLIENT KEY:", key)
+	if _, loaded := waitingPeers.LoadOrStore(key, newPeer); loaded {
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "UUID already in use"})
 		return
 	}
@@ -99,7 +101,7 @@ func client(conn net.Conn, hello ClientHello, publicAddr string) {
 		} else {
 			log.Printf("Successfully sent peer info to receiver %s", publicAddr)
 		}
-	case <-time.After(30 * time.Second):
+	case <-time.After(20 * time.Second):
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "Timed out waiting for an initiator"})
 	}
 }
@@ -108,10 +110,10 @@ func server(conn net.Conn, hello ClientHello, publicAddr string) {
 	defer conn.Close()
 
 	sp := strings.Split(publicAddr, ":")
-	// DEBUG:
-	sp[0] = "192.248.170.119"
 
-	value, ok := waitingPeers.LoadAndDelete(makePeeringKey(hello.UUID, sp[0]))
+	key := makePeeringKey(hello.UUID, sp[0])
+	fmt.Println("SERVER KEY:", key)
+	value, ok := waitingPeers.LoadAndDelete(key)
 	if !ok {
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "Receiver with that UUID not found"})
 		return
