@@ -29,10 +29,11 @@ type ServerResponse struct {
 func main() {
 	serverAddr := os.Args[1]
 	uuid := os.Args[2]
-	proto := os.Args[3]
 
 	var targetIP string
+	var proto string
 	if len(os.Args) > 4 {
+		proto = os.Args[3]
 		targetIP = os.Args[4]
 	}
 
@@ -40,6 +41,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(err, localPort, peerAddress, protocol)
 
 	p2pConn, err := punchHole(localPort, peerAddress, protocol)
 	if err != nil {
@@ -58,7 +60,7 @@ func getRemovePeeringAddress(signalServer, key, ip, proto string) (err error, lo
 		return err, 0, "", ""
 	}
 
-	hello := ClientHello{UUID: key, TargetIP: ip}
+	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: proto}
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
 		return err, 0, "", ""
 	}
@@ -76,7 +78,7 @@ func punchHole(localPort int, remoteAddrStr string, protocol string) (net.Conn, 
 	var lc net.ListenConfig
 	var rAddr string
 	var lAddr string
-	if protocol == "TCP" {
+	if protocol == "tcp" {
 		remoteAddr, err := net.ResolveTCPAddr(protocol, remoteAddrStr)
 		if err != nil {
 			return nil, err
