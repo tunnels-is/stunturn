@@ -42,7 +42,7 @@ func main() {
 	}
 
 	if isServer {
-		resp, err := getUDPPeer(serverAddr, uuid, targetIP)
+		resp, err := getClientPeer(serverAddr, uuid, targetIP)
 		if err != nil {
 			panic(err)
 		}
