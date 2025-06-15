@@ -129,6 +129,48 @@ type PeerResponse struct {
 	UDPConn     *net.UDPConn
 }
 
+func getClientPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error) {
+	conn, err := net.Dial("tcp4", signalServer)
+	if conn != nil {
+		defer conn.Close()
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	udpcon, udpaddr, err := discoverUdpAddr(signalServer)
+	if err != nil {
+		return nil, err
+	}
+
+	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "", UDPAddress: udpaddr.String()}
+	fmt.Println("SENDING:", hello)
+	if err := json.NewEncoder(conn).Encode(hello); err != nil {
+		return nil, err
+	}
+
+	var resp ServerResponse
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		return nil, err
+	}
+	if resp.Protocol == "tcp" {
+		return &PeerResponse{
+			Protocol:    resp.Protocol,
+			localPort:   conn.LocalAddr().(*net.TCPAddr).Port,
+			peerAddress: resp.PeerAddress,
+		}, nil
+	}
+
+	return &PeerResponse{
+		Protocol:    resp.Protocol,
+		localPort:   udpaddr.Port,
+		peerAddress: resp.PeerAddress,
+		UDPAddr:     udpaddr,
+		UDPConn:     udpcon,
+	}, nil
+
+}
+
 func getUDPPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error) {
 	conn, err := net.Dial("tcp4", signalServer)
 	if conn != nil {
