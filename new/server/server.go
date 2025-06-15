@@ -12,21 +12,18 @@ import (
 )
 
 type ClientHello struct {
-	Role     string `json:"role"`
-	UUID     string `json:"uuid"`
-	TargetIP string `json:"target_ip,omitempty"`
+	UUID          string              `json:"uuid"`
+	TargetIP      string              `json:"target_ip,omitempty"`
+	Protocol      string              `json:"protocol"`
+	ResponseChan  chan ClientResponse `json:"-"`
+	PublicIP      string              `json:"-"`
+	PublicAddress string              `json:"-"`
 }
 
 type ClientResponse struct {
+	Protocol    string `json:"protocol"`
 	PeerAddress string `json:"peer_address,omitempty"`
 	Error       string `json:"error,omitempty"`
-}
-
-type Peer struct {
-	WaitingIP     string
-	PublicIP      string
-	PublicAddress string
-	ResponseChan  chan ClientResponse
 }
 
 func makePeeringKey(uuid, ip string) string {
@@ -74,15 +71,12 @@ func client(conn net.Conn, hello ClientHello, publicAddr string) {
 	defer waitingPeers.Delete(hello.UUID)
 
 	responseChan := make(chan ClientResponse)
-	newPeer := Peer{
-		WaitingIP:     hello.TargetIP,
-		PublicAddress: publicAddr,
-		ResponseChan:  responseChan,
-	}
+	hello.PublicAddress = publicAddr
+	hello.ResponseChan = make(chan ClientResponse)
 
 	key := makePeeringKey(hello.UUID, hello.TargetIP)
 	fmt.Println("CLIENT KEY:", key)
-	if _, loaded := waitingPeers.LoadOrStore(key, newPeer); loaded {
+	if _, loaded := waitingPeers.LoadOrStore(key, hello); loaded {
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "UUID already in use"})
 		return
 	}
@@ -114,9 +108,9 @@ func server(conn net.Conn, hello ClientHello, publicAddr string) {
 		return
 	}
 
-	waitingPeer := value.(Peer)
+	waitingPeer := value.(ClientHello)
 
 	fmt.Println("SERVER PEER!")
-	waitingPeer.ResponseChan <- ClientResponse{PeerAddress: publicAddr}
-	json.NewEncoder(conn).Encode(ClientResponse{PeerAddress: waitingPeer.PublicAddress})
+	waitingPeer.ResponseChan <- ClientResponse{PeerAddress: publicAddr, Protocol: hello.Protocol}
+	json.NewEncoder(conn).Encode(ClientResponse{PeerAddress: waitingPeer.PublicAddress, Protocol: hello.Protocol})
 }

@@ -17,9 +17,11 @@ import (
 type ClientHello struct {
 	UUID     string `json:"uuid"`
 	TargetIP string `json:"target_ip"`
+	Protocol string `json:"protocol"`
 }
 
 type ServerResponse struct {
+	Protocol    string `json:"protocol"`
 	PeerAddress string `json:"peer_address"`
 	Error       string `json:"error,omitempty"`
 }
@@ -27,18 +29,19 @@ type ServerResponse struct {
 func main() {
 	serverAddr := os.Args[1]
 	uuid := os.Args[2]
-	var targetIP string
+	proto := os.Args[3]
 
-	if len(os.Args) > 3 {
-		targetIP = os.Args[3]
+	var targetIP string
+	if len(os.Args) > 4 {
+		targetIP = os.Args[4]
 	}
 
-	err, localPort, peerAddress := getRemovePeeringAddress(serverAddr, uuid, targetIP)
+	err, localPort, peerAddress, protocol := getRemovePeeringAddress(serverAddr, uuid, targetIP, proto)
 	if err != nil {
 		panic(err)
 	}
 
-	p2pConn, err := punchHole(localPort, peerAddress)
+	p2pConn, err := punchHole(localPort, peerAddress, protocol)
 	if err != nil {
 		log.Fatalf("❌ Hole punching failed: %v", err)
 	}
@@ -46,49 +49,70 @@ func main() {
 	chat(p2pConn)
 }
 
-func getRemovePeeringAddress(signalServer, key, ip string) (err error, localPort int, peerAddress string) {
+func getRemovePeeringAddress(signalServer, key, ip, proto string) (err error, localPort int, peerAddress string, protocol string) {
 	conn, err := net.Dial("tcp", signalServer)
 	if conn != nil {
 		defer conn.Close()
 	}
 	if err != nil {
-		return err, 0, ""
+		return err, 0, "", ""
 	}
 
 	hello := ClientHello{UUID: key, TargetIP: ip}
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
-		return err, 0, ""
+		return err, 0, "", ""
 	}
 
 	var resp ServerResponse
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-		return err, 0, ""
+		return err, 0, "", ""
 	}
 
-	return nil, conn.LocalAddr().(*net.TCPAddr).Port, resp.PeerAddress
+	return nil, conn.LocalAddr().(*net.TCPAddr).Port, resp.PeerAddress, resp.Protocol
 }
 
-func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
-	remoteAddr, err := net.ResolveTCPAddr("tcp", remoteAddrStr)
-	if err != nil {
-		return nil, err
+func punchHole(localPort int, remoteAddrStr string, protocol string) (net.Conn, error) {
+	var dialer *net.Dialer
+	var lc net.ListenConfig
+	var rAddr string
+	var lAddr string
+	if protocol == "TCP" {
+		remoteAddr, err := net.ResolveTCPAddr(protocol, remoteAddrStr)
+		if err != nil {
+			return nil, err
+		}
+		rAddr = remoteAddr.String()
+
+		localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: localPort}
+		lAddr = localAddr.String()
+
+		controlFunc := func(network, address string, c syscall.RawConn) error {
+			var controlErr error
+			err := c.Control(func(fd uintptr) { controlErr = setReuseAddr(fd) })
+			if err != nil {
+				return err
+			}
+			return controlErr
+		}
+		dialer = &net.Dialer{LocalAddr: localAddr, Timeout: 2 * time.Second, Control: controlFunc}
+		lc = net.ListenConfig{Control: controlFunc}
+
+	} else {
+		remoteAddr, err := net.ResolveUDPAddr(protocol, remoteAddrStr)
+		if err != nil {
+			return nil, err
+		}
+		rAddr = remoteAddr.String()
+
+		localAddr := &net.UDPAddr{IP: net.IPv4zero, Port: localPort}
+		lAddr = localAddr.String()
+		dialer = &net.Dialer{LocalAddr: localAddr, Timeout: 2 * time.Second}
+		lc = net.ListenConfig{}
 	}
 
-	localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: localPort}
 	connChan := make(chan net.Conn)
 	errChan := make(chan error, 2)
-
-	controlFunc := func(network, address string, c syscall.RawConn) error {
-		var controlErr error
-		err := c.Control(func(fd uintptr) { controlErr = setReuseAddr(fd) })
-		if err != nil {
-			return err
-		}
-		return controlErr
-	}
-
 	killGoroutines := make(chan byte, 10)
-	dialer := &net.Dialer{LocalAddr: localAddr, Timeout: 2 * time.Second, Control: controlFunc}
 	go func() {
 		defer func() {
 			fmt.Println("dialer exiting")
@@ -99,7 +123,7 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 				return
 			default:
 			}
-			if conn, err := dialer.Dial("tcp", remoteAddr.String()); err == nil {
+			if conn, err := dialer.Dial(protocol, rAddr); err == nil {
 				connChan <- conn
 				return
 			}
@@ -107,7 +131,6 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 		}
 	}()
 
-	lc := net.ListenConfig{Control: controlFunc}
 	go func() {
 		defer func() {
 			fmt.Println("listener exiting")
@@ -121,7 +144,7 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 			}
 			var listener net.Listener
 			time.Sleep(100 * time.Millisecond)
-			listener, err = lc.Listen(context.Background(), "tcp", localAddr.String())
+			listener, err = lc.Listen(context.Background(), protocol, lAddr)
 			if err != nil {
 				continue
 			}
@@ -146,7 +169,7 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	select {
 	case conn := <-connChan:
 		return conn, nil
-	case err = <-errChan:
+	case err := <-errChan:
 		select {
 		case conn := <-connChan:
 			return conn, err
