@@ -1,46 +1,46 @@
-// file: combined_server_roles.go
+// file: combined_server_robust.go
 package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
+	"time"
 )
 
-// ClientHello is the initial message a client sends to define its role.
 type ClientHello struct {
-	Role     string `json:"role"`      // "initiator" or "receiver"
-	UUID     string `json:"uuid"`      // Shared secret token
-	TargetIP string `json:"target_ip"` // For initiator: the IP of the receiver it wants
+	Role     string `json:"role"`
+	UUID     string `json:"uuid"`
+	TargetIP string `json:"target_ip,omitempty"`
 }
 
-// ServerResponse is the message the server sends back with the peer's address.
-type ServerResponse struct {
-	PeerAddress string `json:"peer_address"`
+type ClientResponse struct {
+	PeerAddress string `json:"peer_address,omitempty"`
 	Error       string `json:"error,omitempty"`
 }
 
-// Peer represents a waiting receiver client.
 type Peer struct {
+	WaitingIP     string
+	PublicIP      string
 	PublicAddress string
-	Conn          net.Conn
+	ResponseChan  chan ClientResponse
 }
 
-// Use a map to store waiting receivers, keyed by UUID.
-var waitingPeers = make(map[string]Peer)
+func makePeeringKey(uuid, ip string) string {
+	return uuid + ip
+}
 
-// A mutex is required to safely access the map from multiple goroutines.
-var peerLock sync.Mutex
+var waitingPeers sync.Map
 
 func main() {
-	listener, err := net.Listen("tcp", ":8080")
+	listener, err := net.Listen("tcp", ":1000")
 	if err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 	defer listener.Close()
-
-	log.Println("✅ Role-based TCP Server started on :8080")
 
 	for {
 		conn, err := listener.Accept()
@@ -53,83 +53,73 @@ func main() {
 }
 
 func handleConnection(conn net.Conn) {
-	defer conn.Close()
-	decoder := json.NewDecoder(conn)
 
 	var hello ClientHello
-	if err := decoder.Decode(&hello); err != nil {
+	if err := json.NewDecoder(conn).Decode(&hello); err != nil {
 		log.Printf("Failed to decode client hello from %s: %v", conn.RemoteAddr(), err)
+		_ = conn.Close()
 		return
 	}
 
 	clientPublicAddr := conn.RemoteAddr().String()
 
 	switch hello.Role {
-	case "receiver":
-		handleReceiver(conn, hello, clientPublicAddr)
-	case "initiator":
-		handleInitiator(conn, hello, clientPublicAddr)
+	case "client":
+		client(conn, hello, clientPublicAddr)
+	case "server":
+		server(conn, hello, clientPublicAddr)
 	default:
-		log.Printf("Invalid role '%s' from client %s", hello.Role, clientPublicAddr)
+		json.NewEncoder(conn).Encode(ClientResponse{Error: "Invalid role specified"})
+		_ = conn.Close()
 	}
 }
 
-func handleReceiver(conn net.Conn, hello ClientHello, publicAddr string) {
-	peerLock.Lock()
-	if _, exists := waitingPeers[hello.UUID]; exists {
-		// It's ambiguous what to do here. For simplicity, we reject the new one.
-		peerLock.Unlock()
-		log.Printf("Receiver with UUID %s already waiting. Rejecting new connection from %s.", hello.UUID, publicAddr)
-		json.NewEncoder(conn).Encode(ServerResponse{Error: "UUID already in use"})
-		return
-	}
+func client(conn net.Conn, hello ClientHello, publicAddr string) {
+	defer conn.Close()
+	defer waitingPeers.Delete(hello.UUID)
 
-	log.Printf("Receiver registered with UUID %s from %s. Waiting for initiator.", hello.UUID, publicAddr)
-	waitingPeers[hello.UUID] = Peer{
+	responseChan := make(chan ClientResponse)
+	newPeer := Peer{
+		WaitingIP:     hello.TargetIP,
 		PublicAddress: publicAddr,
-		Conn:          conn,
+		ResponseChan:  responseChan,
 	}
-	peerLock.Unlock()
 
-	// The connection is now held open, waiting for the initiator.
-	// If the initiator never comes, this goroutine will exit when the client times out and disconnects.
+	if _, loaded := waitingPeers.LoadOrStore(makePeeringKey(hello.UUID, hello.TargetIP), newPeer); loaded {
+		json.NewEncoder(conn).Encode(ClientResponse{Error: "UUID already in use"})
+		return
+	}
+
+	log.Printf("Receiver registered with UUID %s. Waiting for initiator...", hello.UUID)
+
+	select {
+	case resp := <-responseChan:
+		if err := json.NewEncoder(conn).Encode(resp); err != nil {
+			json.NewEncoder(conn).Encode(ClientResponse{Error: "Encoding error"})
+		} else {
+			log.Printf("Successfully sent peer info to receiver %s", publicAddr)
+		}
+	case <-time.After(30 * time.Second):
+		json.NewEncoder(conn).Encode(ClientResponse{Error: "Timed out waiting for an initiator"})
+	}
 }
 
-func handleInitiator(conn net.Conn, hello ClientHello, publicAddr string) {
-	peerLock.Lock()
-	waitingPeer, ok := waitingPeers[hello.UUID]
+func server(conn net.Conn, hello ClientHello, publicAddr string) {
+	defer conn.Close()
+
+	sp := strings.Split(publicAddr, ":")
+	// DEBUG:
+	sp[0] = "192.248.170.119"
+
+	value, ok := waitingPeers.LoadAndDelete(makePeeringKey(hello.UUID, sp[0]))
 	if !ok {
-		peerLock.Unlock()
-		log.Printf("Initiator from %s requested UUID %s, but no receiver was found.", publicAddr, hello.UUID)
-		json.NewEncoder(conn).Encode(ServerResponse{Error: "Receiver with that UUID not found"})
+		json.NewEncoder(conn).Encode(ClientResponse{Error: "Receiver with that UUID not found"})
 		return
 	}
 
-	// Receiver found, remove it from the map so it can't be used again.
-	delete(waitingPeers, hello.UUID)
-	peerLock.Unlock()
+	waitingPeer := value.(Peer)
 
-	// --- Security Check ---
-	// Does the waiting peer's actual public IP match what the initiator requested?
-	if waitingPeer.PublicAddress != hello.TargetIP {
-		log.Printf("SECURITY VIOLATION: Initiator from %s for UUID %s requested target IP %s, but receiver's actual IP is %s.",
-			publicAddr, hello.UUID, hello.TargetIP, waitingPeer.PublicAddress)
-
-		// Inform both parties of the failure and close connections.
-		json.NewEncoder(conn).Encode(ServerResponse{Error: "Target IP mismatch"})
-		json.NewEncoder(waitingPeer.Conn).Encode(ServerResponse{Error: "An initiator attempted to connect with an incorrect target IP"})
-		waitingPeer.Conn.Close()
-		return
-	}
-
-	log.Printf("Match success for UUID %s! Peering %s (receiver) with %s (initiator).",
-		hello.UUID, waitingPeer.PublicAddress, publicAddr)
-
-	// Send initiator's address to the receiver
-	json.NewEncoder(waitingPeer.Conn).Encode(ServerResponse{PeerAddress: publicAddr})
-	// Send receiver's address to the initiator
-	json.NewEncoder(conn).Encode(ServerResponse{PeerAddress: waitingPeer.PublicAddress})
-
-	// The job is done, close the signaling connections.
-	waitingPeer.Conn.Close()
+	fmt.Println("SERVER PEER!")
+	waitingPeer.ResponseChan <- ClientResponse{PeerAddress: publicAddr}
+	json.NewEncoder(conn).Encode(ClientResponse{PeerAddress: waitingPeer.PublicAddress})
 }

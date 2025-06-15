@@ -14,21 +14,18 @@ import (
 	"time"
 )
 
-// ClientHello is the initial message a client sends to define its role.
 type ClientHello struct {
-	Role     string `json:"role"`      // "initiator" or "receiver"
-	UUID     string `json:"uuid"`      // Shared secret token
-	TargetIP string `json:"target_ip"` // For initiator: the IP of the receiver it wants
+	Role     string `json:"role"`
+	UUID     string `json:"uuid"`
+	TargetIP string `json:"target_ip"`
 }
 
-// ServerResponse is the message the server sends back with the peer's address.
 type ServerResponse struct {
 	PeerAddress string `json:"peer_address"`
 	Error       string `json:"error,omitempty"`
 }
 
 func main() {
-	// --- Argument Parsing ---
 	if len(os.Args) < 4 {
 		printUsage()
 		return
@@ -38,20 +35,10 @@ func main() {
 	uuid := os.Args[3]
 	var targetIP string
 
-	if role == "initiator" {
-		if len(os.Args) < 5 {
-			log.Println("Initiator role requires a target IP.")
-			printUsage()
-			return
-		}
+	if role == "client" {
 		targetIP = os.Args[4]
-	} else if role != "receiver" {
-		log.Printf("Invalid role: %s", role)
-		printUsage()
-		return
 	}
 
-	// --- Connect and Signal ---
 	log.Printf("Starting client in '%s' role.", role)
 	conn, err := net.Dial("tcp", serverAddr)
 	if err != nil {
@@ -60,29 +47,20 @@ func main() {
 	defer conn.Close()
 
 	localPort := conn.LocalAddr().(*net.TCPAddr).Port
-	log.Printf("✅ Connected. We are using local port: %d. Sending hello...", localPort)
 
 	hello := ClientHello{Role: role, UUID: uuid, TargetIP: targetIP}
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
 		log.Fatalf("Failed to send hello to server: %v", err)
 	}
 
-	log.Println("Waiting for server to find peer...")
 	var resp ServerResponse
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
 		log.Fatalf("Failed to receive response from server: %v", err)
 	}
 
-	if resp.Error != "" {
-		log.Fatalf("❌ Server returned an error: %s", resp.Error)
-	}
-
 	peerAddr := resp.PeerAddress
-	log.Printf("✅ Received peer address: %s", peerAddr)
 	conn.Close()
 
-	// --- Hole Punch and Chat (Unchanged) ---
-	log.Println("Starting TCP hole punching...")
 	p2pConn, err := punchHole(localPort, peerAddr)
 	if err != nil {
 		log.Fatalf("❌ Hole punching failed: %v", err)
@@ -96,9 +74,6 @@ func printUsage() {
 	fmt.Println("  go run . <server_addr> receiver <uuid>")
 	fmt.Println("  go run . <server_addr> initiator <uuid> <target_ip>")
 }
-
-// punchHole and chat functions are IDENTICAL to the cross-platform client version.
-// They are included here for completeness. setReuseAddr is in the other files.
 
 func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	remoteAddr, err := net.ResolveTCPAddr("tcp", remoteAddrStr)
@@ -132,18 +107,25 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 
 	lc := net.ListenConfig{Control: controlFunc}
 	go func() {
-		listener, err := lc.Listen(context.Background(), "tcp", localAddr.String())
-		if err != nil {
-			errChan <- err
-			return
+		var err error
+		for range 10 {
+			var listener net.Listener
+			time.Sleep(100 * time.Millisecond)
+			listener, err = lc.Listen(context.Background(), "tcp", localAddr.String())
+			if err != nil {
+				continue
+			}
+			defer listener.Close()
+			listener.(*net.TCPListener).SetDeadline(time.Now().Add(5 * time.Second))
+			var conn net.Conn
+			if conn, err = listener.Accept(); err == nil {
+				connChan <- conn
+				break
+			} else {
+				continue
+			}
 		}
-		defer listener.Close()
-		listener.(*net.TCPListener).SetDeadline(time.Now().Add(5 * time.Second))
-		if conn, err := listener.Accept(); err == nil {
-			connChan <- conn
-		} else {
-			errChan <- err
-		}
+		errChan <- err
 	}()
 
 	select {
