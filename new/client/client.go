@@ -202,7 +202,7 @@ func punchUDPHole(resp *PeerResponse) (conn net.Conn, err error) {
 	}
 }
 
-func puncTCPhHole(resp *TCPPeerResponse) (net.Conn, error) {
+func puncTCPhHole(resp *PeerResponse) (net.Conn, error) {
 	var rAddr string
 	remoteAddr, err := net.ResolveTCPAddr("tcp4", resp.peerAddress)
 	if err != nil {
