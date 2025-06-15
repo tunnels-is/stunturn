@@ -48,12 +48,12 @@ func main() {
 		}
 		fmt.Println(err, resp)
 		if resp.Protocol == "udp" {
-			p2pConn, err := punchUDPHole(resp)
+			err := punchUDPHole(resp)
 			if err != nil {
 				log.Fatalf("❌ Hole punching failed: %v", err)
 			}
 			log.Println("✅ P2P UDP connection established!")
-			chat(p2pConn)
+			chatUDP(resp)
 
 		} else {
 			p2pConn, err := puncTCPhHole(resp)
@@ -86,12 +86,12 @@ func main() {
 			panic(err)
 		}
 		fmt.Println(err, resp)
-		p2pConn, err := punchUDPHole(resp)
+		err = punchUDPHole(resp)
 		if err != nil {
 			log.Fatalf("❌ Hole punching failed: %v", err)
 		}
 		log.Println("✅ P2P UDP connection established!")
-		chat(p2pConn)
+		chatUDP(resp)
 	}
 }
 
