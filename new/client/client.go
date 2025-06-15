@@ -78,7 +78,7 @@ func printUsage() {
 func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	remoteAddr, err := net.ResolveTCPAddr("tcp", remoteAddrStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve remote address: %w", err)
+		return nil, fmt.Errorf("failed to resolve remote address")
 	}
 
 	localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: localPort}
@@ -131,12 +131,12 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	select {
 	case conn := <-connChan:
 		return conn, nil
-	case err := <-errChan:
+	case _ = <-errChan:
 		select {
 		case conn := <-connChan:
 			return conn, nil
 		case <-time.After(20 * time.Second):
-			return nil, fmt.Errorf("both attempts failed, first error: %w", err)
+			return nil, fmt.Errorf("both attempts failed, first error")
 		}
 	case <-time.After(20 * time.Second):
 		return nil, fmt.Errorf("hole punching timed out")
@@ -163,7 +163,7 @@ func chat(conn net.Conn) {
 			return
 		}
 		if _, err := conn.Write([]byte(text + "\n")); err != nil {
-			log.Printf("Connection lost: %v", err)
+			// log.Printf("Connection lost: %v", err)
 			return
 		}
 	}

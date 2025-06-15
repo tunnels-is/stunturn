@@ -45,7 +45,7 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("Failed to accept connection: %v", err)
+			// log.Printf("Failed to accept connection: %v", err)
 			continue
 		}
 		go handleConnection(conn)
@@ -56,7 +56,7 @@ func handleConnection(conn net.Conn) {
 
 	var hello ClientHello
 	if err := json.NewDecoder(conn).Decode(&hello); err != nil {
-		log.Printf("Failed to decode client hello from %s: %v", conn.RemoteAddr(), err)
+		// log.Printf("Failed to decode client hello from %s: %v", conn.RemoteAddr(), err)
 		_ = conn.Close()
 		return
 	}
@@ -99,7 +99,7 @@ func client(conn net.Conn, hello ClientHello, publicAddr string) {
 		if err := json.NewEncoder(conn).Encode(resp); err != nil {
 			json.NewEncoder(conn).Encode(ClientResponse{Error: "Encoding error"})
 		} else {
-			log.Printf("Successfully sent peer info to receiver %s", publicAddr)
+			log.Printf("Successfully sent peer info to receiver %s", hello.UUID)
 		}
 	case <-time.After(20 * time.Second):
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "Timed out waiting for an initiator"})
