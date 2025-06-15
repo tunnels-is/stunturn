@@ -1,5 +1,4 @@
-// file: combined_server_robust.go
-package main
+package server
 
 import (
 	"encoding/json"
@@ -34,8 +33,8 @@ func makePeeringKey(uuid, ip string) string {
 
 var waitingPeers sync.Map
 
-func main() {
-	listener, err := net.Listen("tcp", ":1000")
+func Start(address string) {
+	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}

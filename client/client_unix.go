@@ -1,7 +1,6 @@
 //go:build linux || darwin
 
-// file: reuse_addr_unix.go
-package main
+package client
 
 import "syscall"
 

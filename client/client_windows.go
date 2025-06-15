@@ -1,7 +1,6 @@
 //go:build windows
 
-// file: reuse_addr_windows.go
-package main
+package client
 
 import "golang.org/x/sys/windows"
 

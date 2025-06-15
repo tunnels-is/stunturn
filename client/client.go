@@ -1,15 +1,10 @@
-// file: p2p_client_roles.go
-package main
+package client
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
-	"os"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -27,75 +22,7 @@ type ServerResponse struct {
 	Error       string `json:"error,omitempty"`
 }
 
-func main() {
-	serverAddr := os.Args[1]
-	uuid := os.Args[2]
-
-	var targetIP string
-	var proto string
-	isServer := false
-	if len(os.Args) == 4 {
-		isServer = true
-	} else if len(os.Args) == 5 {
-		proto = os.Args[3]
-		targetIP = os.Args[4]
-	}
-
-	if isServer {
-		resp, err := getClientPeer(serverAddr, uuid, targetIP)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(err, resp)
-		if resp.Protocol == "udp" {
-			err := punchUDPHole(resp)
-			if err != nil {
-				log.Fatalf("❌ Hole punching failed: %v", err)
-			}
-			log.Println("✅ P2P UDP connection established!")
-			chatUDP(resp)
-
-		} else {
-			p2pConn, err := puncTCPhHole(resp)
-			if err != nil {
-				log.Fatalf("❌ Hole punching failed: %v", err)
-			}
-			log.Println("✅ P2P TCP connection established!")
-			chat(p2pConn)
-		}
-		return
-	}
-
-	if proto == "tcp" {
-		resp, err := getTCPPeer(serverAddr, uuid, targetIP)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(err, resp)
-
-		p2pConn, err := puncTCPhHole(resp)
-		if err != nil {
-			log.Fatalf("❌ Hole punching failed: %v", err)
-		}
-		log.Println("✅ P2P TCP connection established!")
-		chat(p2pConn)
-
-	} else if proto == "udp" {
-		resp, err := getUDPPeer(serverAddr, uuid, targetIP)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(err, resp)
-		err = punchUDPHole(resp)
-		if err != nil {
-			log.Fatalf("❌ Hole punching failed: %v", err)
-		}
-		log.Println("✅ P2P UDP connection established!")
-		chatUDP(resp)
-	}
-}
-
-func getTCPPeer(signalServer, key, ip string) (tcpresp *PeerResponse, err error) {
+func GetTCPPeer(signalServer, key, ip string) (tcpresp *PeerResponse, err error) {
 	conn, err := net.Dial("tcp4", signalServer)
 	if conn != nil {
 		defer conn.Close()
@@ -116,20 +43,20 @@ func getTCPPeer(signalServer, key, ip string) (tcpresp *PeerResponse, err error)
 
 	return &PeerResponse{
 		Protocol:    resp.Protocol,
-		localPort:   conn.LocalAddr().(*net.TCPAddr).Port,
-		peerAddress: resp.PeerAddress,
+		LocalPort:   conn.LocalAddr().(*net.TCPAddr).Port,
+		PeerAddress: resp.PeerAddress,
 	}, nil
 }
 
 type PeerResponse struct {
 	Protocol    string
-	localPort   int
-	peerAddress string
+	LocalPort   int
+	PeerAddress string
 	UDPAddr     *net.UDPAddr
 	UDPConn     *net.UDPConn
 }
 
-func getClientPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error) {
+func GetClientPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error) {
 	conn, err := net.Dial("tcp4", signalServer)
 	if conn != nil {
 		defer conn.Close()
@@ -156,22 +83,22 @@ func getClientPeer(signalServer, key, ip string) (udpresp *PeerResponse, err err
 	if resp.Protocol == "tcp" {
 		return &PeerResponse{
 			Protocol:    resp.Protocol,
-			localPort:   conn.LocalAddr().(*net.TCPAddr).Port,
-			peerAddress: resp.PeerAddress,
+			LocalPort:   conn.LocalAddr().(*net.TCPAddr).Port,
+			PeerAddress: resp.PeerAddress,
 		}, nil
 	}
 
 	return &PeerResponse{
 		Protocol:    resp.Protocol,
-		localPort:   udpaddr.Port,
-		peerAddress: resp.PeerAddress,
+		LocalPort:   udpaddr.Port,
+		PeerAddress: resp.PeerAddress,
 		UDPAddr:     udpaddr,
 		UDPConn:     udpcon,
 	}, nil
 
 }
 
-func getUDPPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error) {
+func GetUDPPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error) {
 	conn, err := net.Dial("tcp4", signalServer)
 	if conn != nil {
 		defer conn.Close()
@@ -198,15 +125,15 @@ func getUDPPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error)
 
 	return &PeerResponse{
 		Protocol:    resp.Protocol,
-		localPort:   udpaddr.Port,
-		peerAddress: resp.PeerAddress,
+		LocalPort:   udpaddr.Port,
+		PeerAddress: resp.PeerAddress,
 		UDPAddr:     udpaddr,
 		UDPConn:     udpcon,
 	}, nil
 }
 
-func punchUDPHole(resp *PeerResponse) (err error) {
-	peerAddress, err := net.ResolveUDPAddr("udp4", resp.peerAddress)
+func PunchUDPHole(resp *PeerResponse) (err error) {
+	peerAddress, err := net.ResolveUDPAddr("udp4", resp.PeerAddress)
 
 	killGoroutines := make(chan byte, 10)
 	defer func() {
@@ -246,15 +173,15 @@ func punchUDPHole(resp *PeerResponse) (err error) {
 	}
 }
 
-func puncTCPhHole(resp *PeerResponse) (net.Conn, error) {
+func PuncTCPhHole(resp *PeerResponse) (net.Conn, error) {
 	var rAddr string
-	remoteAddr, err := net.ResolveTCPAddr("tcp4", resp.peerAddress)
+	remoteAddr, err := net.ResolveTCPAddr("tcp4", resp.PeerAddress)
 	if err != nil {
 		return nil, err
 	}
 	rAddr = remoteAddr.String()
 
-	localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: resp.localPort}
+	localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: resp.LocalPort}
 	dialer := &net.Dialer{LocalAddr: localAddr, Timeout: 2 * time.Second, Control: controlFunc}
 
 	connChan := make(chan net.Conn)
@@ -291,7 +218,7 @@ func puncTCPhHole(resp *PeerResponse) (net.Conn, error) {
 				time.Sleep(100 * time.Millisecond)
 			}
 			var listener net.Listener
-			listener, err = getTCPListener(resp.localPort)
+			listener, err = getTCPListener(resp.LocalPort)
 			if err != nil {
 				continue
 			}
@@ -324,72 +251,6 @@ func puncTCPhHole(resp *PeerResponse) (net.Conn, error) {
 		}
 	case <-time.After(10 * time.Second):
 		return nil, fmt.Errorf("hole punching timed out")
-	}
-}
-
-func chat(conn net.Conn) {
-	defer conn.Close()
-	log.Println("Enter a message and press Enter. Use 'exit' to quit.")
-	buff := make([]byte, 1024)
-	go func() {
-		for {
-			n, err := conn.Read(buff[0:])
-			if err != nil {
-				fmt.Println("read err", err)
-				return
-			}
-			fmt.Println(string(buff[:n]))
-		}
-	}()
-
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Print("> ")
-		text, _ := reader.ReadString('\n')
-		text = strings.TrimSpace(text)
-		if strings.ToLower(text) == "exit" {
-			return
-		}
-		if _, err := conn.Write([]byte(text + "\n")); err != nil {
-			log.Printf("Connection lost: %v", err)
-			return
-		}
-	}
-}
-func chatUDP(resp *PeerResponse) {
-	defer resp.UDPConn.Close()
-	log.Println("Enter a message and press Enter. Use 'exit' to quit.")
-	buff := make([]byte, 1024)
-	go func() {
-		for {
-			n, err := resp.UDPConn.Read(buff[0:])
-			if err != nil {
-				fmt.Println("read err", err)
-				return
-			}
-			fmt.Println(string(buff[:n]))
-		}
-	}()
-
-	pa, err := net.ResolveUDPAddr("udp", resp.peerAddress)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Print("> ")
-		text, _ := reader.ReadString('\n')
-		text = strings.TrimSpace(text)
-		if strings.ToLower(text) == "exit" {
-			return
-		}
-		_, err := resp.UDPConn.WriteToUDP([]byte(text+"\n"), pa)
-		if err != nil {
-			log.Printf("Connection lost: %v", err)
-
-			return
-		}
 	}
 }
 
