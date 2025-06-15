@@ -293,6 +293,7 @@ func chat(conn net.Conn) {
 		for {
 			n, err := conn.Read(buff[0:])
 			if err != nil {
+				fmt.Println("read err", err)
 				return
 			}
 			fmt.Println(string(buff[:n]))
