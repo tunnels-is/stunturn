@@ -288,14 +288,17 @@ func puncTCPhHole(resp *PeerResponse) (net.Conn, error) {
 func chat(conn net.Conn) {
 	defer conn.Close()
 	log.Println("Enter a message and press Enter. Use 'exit' to quit.")
+	buff := make([]byte, 1024)
 	go func() {
-		scanner := bufio.NewScanner(conn)
-		for scanner.Scan() {
-			fmt.Printf("\n[PEER]: %s\n> ", scanner.Text())
+		for {
+			n, err := conn.Read(buff[0:])
+			if err != nil {
+				return
+			}
+			fmt.Println(string(buff[:n]))
 		}
-		log.Println("Peer has disconnected.")
-		os.Exit(0)
 	}()
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("> ")
