@@ -56,21 +56,16 @@ func handleConnection(conn net.Conn) {
 
 	var hello ClientHello
 	if err := json.NewDecoder(conn).Decode(&hello); err != nil {
-		// log.Printf("Failed to decode client hello from %s: %v", conn.RemoteAddr(), err)
 		_ = conn.Close()
 		return
 	}
 
 	clientPublicAddr := conn.RemoteAddr().String()
 
-	switch hello.Role {
-	case "client":
-		client(conn, hello, clientPublicAddr)
-	case "server":
+	if hello.TargetIP == "" {
 		server(conn, hello, clientPublicAddr)
-	default:
-		json.NewEncoder(conn).Encode(ClientResponse{Error: "Invalid role specified"})
-		_ = conn.Close()
+	} else {
+		client(conn, hello, clientPublicAddr)
 	}
 }
 

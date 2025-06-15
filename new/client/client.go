@@ -15,7 +15,6 @@ import (
 )
 
 type ClientHello struct {
-	Role     string `json:"role"`
 	UUID     string `json:"uuid"`
 	TargetIP string `json:"target_ip"`
 }
@@ -26,10 +25,6 @@ type ServerResponse struct {
 }
 
 func main() {
-	if len(os.Args) < 4 {
-		printUsage()
-		return
-	}
 	serverAddr := os.Args[1]
 	role := os.Args[2]
 	uuid := os.Args[3]
@@ -39,29 +34,12 @@ func main() {
 		targetIP = os.Args[4]
 	}
 
-	log.Printf("Starting client in '%s' role.", role)
-	conn, err := net.Dial("tcp", serverAddr)
+	err, localPort, peerAddress := getRemovePeeringAddress(serverAddr, uuid, targetIP)
 	if err != nil {
-		log.Fatalf("Failed to connect to server: %v", err)
-	}
-	defer conn.Close()
-
-	localPort := conn.LocalAddr().(*net.TCPAddr).Port
-
-	hello := ClientHello{Role: role, UUID: uuid, TargetIP: targetIP}
-	if err := json.NewEncoder(conn).Encode(hello); err != nil {
-		log.Fatalf("Failed to send hello to server: %v", err)
+		panic(err)
 	}
 
-	var resp ServerResponse
-	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-		log.Fatalf("Failed to receive response from server: %v", err)
-	}
-
-	peerAddr := resp.PeerAddress
-	conn.Close()
-
-	p2pConn, err := punchHole(localPort, peerAddr)
+	p2pConn, err := punchHole(localPort, peerAddress)
 	if err != nil {
 		log.Fatalf("❌ Hole punching failed: %v", err)
 	}
@@ -69,16 +47,32 @@ func main() {
 	chat(p2pConn)
 }
 
-func printUsage() {
-	fmt.Println("Usage:")
-	fmt.Println("  go run . <server_addr> receiver <uuid>")
-	fmt.Println("  go run . <server_addr> initiator <uuid> <target_ip>")
+func getRemovePeeringAddress(signalServer, key, ip string) (err error, localPort int, peerAddress string) {
+	conn, err := net.Dial("tcp", signalServer)
+	if conn != nil {
+		defer conn.Close()
+	}
+	if err != nil {
+		return err, 0, ""
+	}
+
+	hello := ClientHello{UUID: key, TargetIP: ip}
+	if err := json.NewEncoder(conn).Encode(hello); err != nil {
+		return err, 0, ""
+	}
+
+	var resp ServerResponse
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		return err, 0, ""
+	}
+
+	return nil, conn.LocalAddr().(*net.TCPAddr).Port, resp.PeerAddress
 }
 
 func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	remoteAddr, err := net.ResolveTCPAddr("tcp", remoteAddrStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve remote address")
+		return nil, err
 	}
 
 	localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: localPort}
@@ -94,9 +88,18 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 		return controlErr
 	}
 
-	dialer := &net.Dialer{LocalAddr: localAddr, Timeout: 5 * time.Second, Control: controlFunc}
+	killGoroutines := make(chan byte, 10)
+	dialer := &net.Dialer{LocalAddr: localAddr, Timeout: 2 * time.Second, Control: controlFunc}
 	go func() {
-		for range 200 {
+		defer func() {
+			fmt.Println("dialer exiting")
+		}()
+		for range 300 {
+			select {
+			case <-killGoroutines:
+				return
+			default:
+			}
 			if conn, err := dialer.Dial("tcp", remoteAddr.String()); err == nil {
 				connChan <- conn
 				return
@@ -107,8 +110,16 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 
 	lc := net.ListenConfig{Control: controlFunc}
 	go func() {
+		defer func() {
+			fmt.Println("listener exiting")
+		}()
 		var err error
-		for range 10 {
+		for range 300 {
+			select {
+			case <-killGoroutines:
+				return
+			default:
+			}
 			var listener net.Listener
 			time.Sleep(100 * time.Millisecond)
 			listener, err = lc.Listen(context.Background(), "tcp", localAddr.String())
@@ -116,7 +127,7 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 				continue
 			}
 			defer listener.Close()
-			listener.(*net.TCPListener).SetDeadline(time.Now().Add(5 * time.Second))
+			// listener.(*net.TCPListener).SetDeadline(time.Now().Add(5 * time.Second))
 			var conn net.Conn
 			if conn, err = listener.Accept(); err == nil {
 				connChan <- conn
@@ -128,17 +139,22 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 		errChan <- err
 	}()
 
+	defer func() {
+		killGoroutines <- 1
+		killGoroutines <- 1
+	}()
+
 	select {
 	case conn := <-connChan:
 		return conn, nil
-	case _ = <-errChan:
+	case err = <-errChan:
 		select {
 		case conn := <-connChan:
-			return conn, nil
-		case <-time.After(20 * time.Second):
+			return conn, err
+		case <-time.After(12 * time.Second):
 			return nil, fmt.Errorf("both attempts failed, first error")
 		}
-	case <-time.After(20 * time.Second):
+	case <-time.After(10 * time.Second):
 		return nil, fmt.Errorf("hole punching timed out")
 	}
 }
