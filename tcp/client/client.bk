@@ -1,4 +1,4 @@
-// file: p2p_client_crossplatform.go
+// file: p2p_client_final.go
 package main
 
 import (
@@ -25,16 +25,20 @@ func main() {
 	}
 	serverAddr := os.Args[1]
 
+	// --- 1. Connect to server for Signaling and STUN ---
 	log.Println("Connecting to server to get peer address...")
 	conn, err := net.Dial("tcp", serverAddr)
 	if err != nil {
 		log.Fatalf("Failed to connect to server: %v", err)
 	}
+	// Defer closing this connection until main() returns.
 	defer conn.Close()
 
+	// The local port of this connection is what we need for hole punching.
 	localPort := conn.LocalAddr().(*net.TCPAddr).Port
 	log.Printf("✅ Connected. We are using local port: %d. Waiting for peer...", localPort)
 
+	// --- 2. Wait for the server to send us the peer's address ---
 	var peerSignal Signal
 	if err := json.NewDecoder(conn).Decode(&peerSignal); err != nil {
 		log.Fatalf("Failed to receive peer address from server: %v", err)
@@ -42,8 +46,11 @@ func main() {
 	peerAddr := peerSignal.Address
 	log.Printf("✅ Received peer address: %s", peerAddr)
 
+	// We've received the signal, so we can now close the connection to the server.
+	// This frees up the connection but keeps the NAT mapping alive for a short time.
 	conn.Close()
 
+	// --- 3. Perform TCP Hole Punching with the critical SO_REUSEADDR fix ---
 	log.Println("Starting TCP hole punching...")
 	p2pConn, err := punchHole(localPort, peerAddr)
 	if err != nil {
@@ -51,10 +58,11 @@ func main() {
 	}
 	log.Println("✅ P2P connection established!")
 
+	// --- 4. Communicate! ---
 	chat(p2pConn)
 }
 
-// punchHole now uses a cross-platform helper function 'setReuseAddr'.
+// punchHole now uses a net.ListenConfig with a Control function to set SO_REUSEADDR.
 func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	remoteAddr, err := net.ResolveTCPAddr("tcp", remoteAddrStr)
 	if err != nil {
@@ -64,39 +72,36 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	connChan := make(chan net.Conn)
 	errChan := make(chan error, 2)
 
-	// Define the control function that uses our cross-platform helper.
-	// This function will be used for both the dialer and the listener.
-	controlFunc := func(network, address string, c syscall.RawConn) error {
-		var controlErr error
-		err := c.Control(func(fd uintptr) {
-			// Call our platform-specific helper function.
-			controlErr = setReuseAddr(fd)
-		})
-		if err != nil {
-			return err
-		}
-		return controlErr
-	}
-
+	// The dialer also needs to use the same local port.
 	dialer := &net.Dialer{
 		LocalAddr: localAddr,
 		Timeout:   5 * time.Second,
-		Control:   controlFunc,
+		// The Control function is used to set socket options before the connection is established.
+		Control: func(network, address string, c syscall.RawConn) error {
+			return c.Control(func(fd uintptr) {
+				syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+			})
+		},
 	}
 
 	go func() {
 		log.Printf("Attempting to dial %s from local port %d", remoteAddr, localPort)
-		for i := 0; i < 10; i++ {
+		for i := 0; i < 100; i++ {
 			if conn, err := dialer.Dial("tcp", remoteAddr.String()); err == nil {
 				connChan <- conn
 				return
 			}
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 		}
 	}()
 
+	// The listener needs the SO_REUSEADDR option to bind to the port in TIME_WAIT state.
 	lc := net.ListenConfig{
-		Control: controlFunc,
+		Control: func(network, address string, c syscall.RawConn) error {
+			return c.Control(func(fd uintptr) {
+				syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+			})
+		},
 	}
 
 	go func() {
@@ -124,15 +129,14 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 		select {
 		case conn := <-connChan:
 			return conn, nil
-		case <-time.After(30 * time.Second):
+		case <-time.After(20 * time.Second):
 			return nil, fmt.Errorf("both dialing and listening failed, first error: %w", err)
 		}
-	case <-time.After(30 * time.Second):
+	case <-time.After(20 * time.Second):
 		return nil, fmt.Errorf("hole punching timed out")
 	}
 }
 
-// chat function remains unchanged.
 func chat(conn net.Conn) {
 	defer conn.Close()
 	log.Println("Enter a message and press Enter. Use 'exit' to quit.")
@@ -144,6 +148,7 @@ func chat(conn net.Conn) {
 		log.Println("Peer has disconnected.")
 		os.Exit(0)
 	}()
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("> ")
