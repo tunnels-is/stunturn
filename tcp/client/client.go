@@ -40,7 +40,7 @@ func main() {
 		log.Fatalf("Failed to receive peer address from server: %v", err)
 	}
 	peerAddr := peerSignal.Address
-	log.Printf("✅ Received peer address: %s", peerAddr)
+	// log.Printf("✅ Received peer address: %s", peerAddr)
 
 	conn.Close()
 
@@ -85,7 +85,7 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	}
 
 	go func() {
-		log.Printf("Attempting to dial %s from local port %d", remoteAddr, localPort)
+		// log.Printf("Attempting to dial %s from local port %d", remoteAddr, localPort)
 		for range 100 {
 			if conn, err := dialer.Dial("tcp", remoteAddr.String()); err == nil {
 				connChan <- conn
@@ -100,7 +100,7 @@ func punchHole(localPort int, remoteAddrStr string) (net.Conn, error) {
 	}
 
 	go func() {
-		log.Printf("Attempting to listen on local port %d", localPort)
+		// log.Printf("Attempting to listen on local port %d", localPort)
 		listener, err := lc.Listen(context.Background(), "tcp", localAddr.String())
 		if err != nil {
 			errChan <- err

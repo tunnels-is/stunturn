@@ -44,7 +44,7 @@ func main() {
 func handleConnection(conn net.Conn) {
 	// The remote address is our "STUN" discovery.
 	clientAddr := conn.RemoteAddr().String()
-	log.Printf("Client connected from %s", clientAddr)
+	// log.Printf("Client connected from %s", clientAddr)
 
 	thisClient := Peer{
 		PublicAddress: clientAddr,
@@ -54,7 +54,7 @@ func handleConnection(conn net.Conn) {
 	select {
 	case waitingPeer := <-peerChannel:
 		// A peer was waiting. Pair them up.
-		log.Printf("Pairing %s with %s", waitingPeer.PublicAddress, thisClient.PublicAddress)
+		log.Printf("waiting to pair client")
 
 		// Create encoders to send JSON over the raw TCP stream.
 		encoderForWaitingPeer := json.NewEncoder(waitingPeer.Conn)
@@ -70,7 +70,7 @@ func handleConnection(conn net.Conn) {
 
 	default:
 		// No peer waiting. This client will wait.
-		log.Printf("%s is waiting for a peer...", thisClient.PublicAddress)
+		log.Printf("client waiting for peer")
 		peerChannel <- thisClient
 	}
 }
