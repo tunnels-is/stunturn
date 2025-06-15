@@ -12,11 +12,13 @@ import (
 )
 
 type ClientHello struct {
-	UUID          string              `json:"uuid"`
-	TargetIP      string              `json:"target_ip,omitempty"`
-	Protocol      string              `json:"protocol"`
+	UUID       string `json:"uuid"`
+	TargetIP   string `json:"target_ip,omitempty"`
+	Protocol   string `json:"protocol"`
+	UDPAddress string `json:"address"`
+
+	// server only
 	ResponseChan  chan ClientResponse `json:"-"`
-	PublicIP      string              `json:"-"`
 	PublicAddress string              `json:"-"`
 }
 
@@ -38,6 +40,7 @@ func main() {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 	defer listener.Close()
+	go startUdpStunServer()
 
 	for {
 		conn, err := listener.Accept()
@@ -70,8 +73,11 @@ func client(conn net.Conn, hello ClientHello, publicAddr string) {
 	defer conn.Close()
 	defer waitingPeers.Delete(hello.UUID)
 
-	responseChan := make(chan ClientResponse)
-	hello.PublicAddress = publicAddr
+	if hello.Protocol == "udp" {
+		hello.PublicAddress = hello.UDPAddress
+	} else {
+		hello.PublicAddress = publicAddr
+	}
 	hello.ResponseChan = make(chan ClientResponse)
 
 	key := makePeeringKey(hello.UUID, hello.TargetIP)
@@ -84,7 +90,7 @@ func client(conn net.Conn, hello ClientHello, publicAddr string) {
 	log.Printf("Receiver registered with UUID %s. Waiting for initiator...", hello.UUID)
 
 	select {
-	case resp := <-responseChan:
+	case resp := <-hello.ResponseChan:
 		if err := json.NewEncoder(conn).Encode(resp); err != nil {
 			json.NewEncoder(conn).Encode(ClientResponse{Error: "Encoding error"})
 		} else {
@@ -110,7 +116,37 @@ func server(conn net.Conn, hello ClientHello, publicAddr string) {
 
 	waitingPeer := value.(ClientHello)
 
-	fmt.Println("SERVER PEER!")
-	waitingPeer.ResponseChan <- ClientResponse{PeerAddress: publicAddr, Protocol: hello.Protocol}
-	json.NewEncoder(conn).Encode(ClientResponse{PeerAddress: waitingPeer.PublicAddress, Protocol: hello.Protocol})
+	fmt.Println("SERVER!")
+	if waitingPeer.Protocol == "udp" {
+		waitingPeer.ResponseChan <- ClientResponse{PeerAddress: hello.UDPAddress, Protocol: waitingPeer.Protocol}
+	} else {
+		waitingPeer.ResponseChan <- ClientResponse{PeerAddress: publicAddr, Protocol: waitingPeer.Protocol}
+	}
+
+	json.NewEncoder(conn).Encode(ClientResponse{PeerAddress: waitingPeer.PublicAddress, Protocol: waitingPeer.Protocol})
+	fmt.Println("DONE!")
+}
+
+func startUdpStunServer() {
+	addr, err := net.ResolveUDPAddr("udp", ":1001")
+	if err != nil {
+		log.Fatalf("UDP: Failed to resolve address: %v", err)
+	}
+
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		log.Fatalf("UDP: Failed to listen: %v", err)
+	}
+	defer conn.Close()
+
+	buf := make([]byte, 1024)
+	for {
+		_, remoteAddr, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			log.Printf("UDP: Error reading: %v", err)
+			continue
+		}
+
+		conn.WriteToUDP([]byte(remoteAddr.String()), remoteAddr)
+	}
 }

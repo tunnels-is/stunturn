@@ -15,9 +15,10 @@ import (
 )
 
 type ClientHello struct {
-	UUID     string `json:"uuid"`
-	TargetIP string `json:"target_ip"`
-	Protocol string `json:"protocol"`
+	UUID       string `json:"uuid"`
+	TargetIP   string `json:"target_ip"`
+	Protocol   string `json:"protocol"`
+	UDPAddress string `json:"address"`
 }
 
 type ServerResponse struct {
@@ -32,85 +33,185 @@ func main() {
 
 	var targetIP string
 	var proto string
-	if len(os.Args) > 4 {
+	isServer := false
+	if len(os.Args) == 4 {
+		isServer = true
+	} else if len(os.Args) == 5 {
 		proto = os.Args[3]
 		targetIP = os.Args[4]
 	}
 
-	err, localPort, peerAddress, protocol := getRemovePeeringAddress(serverAddr, uuid, targetIP, proto)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(err, localPort, peerAddress, protocol)
+	if isServer {
+		resp, err := getUDPPeer(serverAddr, uuid, targetIP)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(err, resp)
+		if resp.Protocol == "udp" {
+			p2pConn, err := punchUDPHole(resp)
+			if err != nil {
+				log.Fatalf("❌ Hole punching failed: %v", err)
+			}
+			log.Println("✅ P2P UDP connection established!")
+			chat(p2pConn)
 
-	p2pConn, err := punchHole(localPort, peerAddress, protocol)
-	if err != nil {
-		log.Fatalf("❌ Hole punching failed: %v", err)
+		} else {
+			p2pConn, err := puncTCPhHole(resp)
+			if err != nil {
+				log.Fatalf("❌ Hole punching failed: %v", err)
+			}
+			log.Println("✅ P2P TCP connection established!")
+			chat(p2pConn)
+		}
+		return
 	}
-	log.Println("✅ P2P connection established!")
-	chat(p2pConn)
+
+	if proto == "tcp" {
+		resp, err := getTCPPeer(serverAddr, uuid, targetIP)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(err, resp)
+
+		p2pConn, err := puncTCPhHole(resp)
+		if err != nil {
+			log.Fatalf("❌ Hole punching failed: %v", err)
+		}
+		log.Println("✅ P2P TCP connection established!")
+		chat(p2pConn)
+
+	} else if proto == "udp" {
+		resp, err := getUDPPeer(serverAddr, uuid, targetIP)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(err, resp)
+		p2pConn, err := punchUDPHole(resp)
+		if err != nil {
+			log.Fatalf("❌ Hole punching failed: %v", err)
+		}
+		log.Println("✅ P2P UDP connection established!")
+		chat(p2pConn)
+	}
 }
 
-func getRemovePeeringAddress(signalServer, key, ip, proto string) (err error, localPort int, peerAddress string, protocol string) {
-	conn, err := net.Dial("tcp", signalServer)
+func getTCPPeer(signalServer, key, ip string) (tcpresp *PeerResponse, err error) {
+	conn, err := net.Dial("tcp4", signalServer)
 	if conn != nil {
 		defer conn.Close()
 	}
 	if err != nil {
-		return err, 0, "", ""
+		return nil, err
 	}
 
-	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: proto}
+	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "tcp"}
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
-		return err, 0, "", ""
+		return nil, err
 	}
 
 	var resp ServerResponse
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-		return err, 0, "", ""
+		return nil, err
 	}
 
-	return nil, conn.LocalAddr().(*net.TCPAddr).Port, resp.PeerAddress, resp.Protocol
+	return &PeerResponse{
+		Protocol:    resp.Protocol,
+		localPort:   conn.LocalAddr().(*net.TCPAddr).Port,
+		peerAddress: resp.PeerAddress,
+	}, nil
 }
 
-func punchHole(localPort int, remoteAddrStr string, protocol string) (net.Conn, error) {
-	var dialer *net.Dialer
-	var lc net.ListenConfig
-	var rAddr string
-	var lAddr string
-	if protocol == "tcp" {
-		remoteAddr, err := net.ResolveTCPAddr(protocol, remoteAddrStr)
-		if err != nil {
-			return nil, err
-		}
-		rAddr = remoteAddr.String()
+type PeerResponse struct {
+	Protocol    string
+	localPort   int
+	peerAddress string
+	UDPAddr     *net.UDPAddr
+	UDPConn     *net.UDPConn
+}
 
-		localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: localPort}
-		lAddr = localAddr.String()
-
-		controlFunc := func(network, address string, c syscall.RawConn) error {
-			var controlErr error
-			err := c.Control(func(fd uintptr) { controlErr = setReuseAddr(fd) })
-			if err != nil {
-				return err
-			}
-			return controlErr
-		}
-		dialer = &net.Dialer{LocalAddr: localAddr, Timeout: 2 * time.Second, Control: controlFunc}
-		lc = net.ListenConfig{Control: controlFunc}
-
-	} else {
-		remoteAddr, err := net.ResolveUDPAddr(protocol, remoteAddrStr)
-		if err != nil {
-			return nil, err
-		}
-		rAddr = remoteAddr.String()
-
-		localAddr := &net.UDPAddr{IP: net.IPv4zero, Port: localPort}
-		lAddr = localAddr.String()
-		dialer = &net.Dialer{LocalAddr: localAddr, Timeout: 2 * time.Second}
-		lc = net.ListenConfig{}
+func getUDPPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error) {
+	conn, err := net.Dial("tcp4", signalServer)
+	if conn != nil {
+		defer conn.Close()
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	udpcon, udpaddr, err := discoverUdpAddr(signalServer)
+	if err != nil {
+		return nil, err
+	}
+
+	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "tcp", UDPAddress: udpaddr.String()}
+	if err := json.NewEncoder(conn).Encode(hello); err != nil {
+		return nil, err
+	}
+
+	var resp ServerResponse
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		return nil, err
+	}
+
+	return &PeerResponse{
+		Protocol:    resp.Protocol,
+		localPort:   udpaddr.Port,
+		peerAddress: resp.PeerAddress,
+		UDPAddr:     udpaddr,
+		UDPConn:     udpcon,
+	}, nil
+}
+
+func punchUDPHole(resp *PeerResponse) (conn net.Conn, err error) {
+	peerAddress, err := net.ResolveUDPAddr("udp4", resp.peerAddress)
+
+	killGoroutines := make(chan byte, 10)
+	defer func() {
+		killGoroutines <- 1
+	}()
+
+	go func() {
+		for range 300 {
+			select {
+			case <-killGoroutines:
+				return
+			default:
+				time.Sleep(100 * time.Millisecond)
+			}
+			if _, err := resp.UDPConn.WriteToUDP([]byte("ping"), peerAddress); err != nil {
+				continue
+			}
+		}
+	}()
+
+	buf := make([]byte, 1024)
+	start := time.Now()
+	for {
+		fmt.Println("udp read")
+		n, _, err := resp.UDPConn.ReadFromUDP(buf)
+		if err != nil {
+			if time.Since(start).Seconds() > 20 {
+				return nil, fmt.Errorf("20 second UDP read timeout: %s", err)
+			}
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		if string(buf[:n]) == "ping" {
+			return net.Conn(resp.UDPConn), nil
+		}
+	}
+}
+
+func puncTCPhHole(resp *TCPPeerResponse) (net.Conn, error) {
+	var rAddr string
+	remoteAddr, err := net.ResolveTCPAddr("tcp4", resp.peerAddress)
+	if err != nil {
+		return nil, err
+	}
+	rAddr = remoteAddr.String()
+
+	localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: resp.localPort}
+	dialer := &net.Dialer{LocalAddr: localAddr, Timeout: 2 * time.Second, Control: controlFunc}
 
 	connChan := make(chan net.Conn)
 	errChan := make(chan error, 2)
@@ -124,12 +225,12 @@ func punchHole(localPort int, remoteAddrStr string, protocol string) (net.Conn, 
 			case <-killGoroutines:
 				return
 			default:
+				time.Sleep(100 * time.Millisecond)
 			}
-			if conn, err := dialer.Dial(protocol, rAddr); err == nil {
+			if conn, err := dialer.Dial("tcp", rAddr); err == nil {
 				connChan <- conn
 				return
 			}
-			time.Sleep(100 * time.Millisecond)
 		}
 	}()
 
@@ -143,15 +244,14 @@ func punchHole(localPort int, remoteAddrStr string, protocol string) (net.Conn, 
 			case <-killGoroutines:
 				return
 			default:
+				time.Sleep(100 * time.Millisecond)
 			}
 			var listener net.Listener
-			time.Sleep(100 * time.Millisecond)
-			listener, err = lc.Listen(context.Background(), protocol, lAddr)
+			listener, err = getTCPListener(resp.localPort)
 			if err != nil {
 				continue
 			}
 			defer listener.Close()
-			// listener.(*net.TCPListener).SetDeadline(time.Now().Add(5 * time.Second))
 			var conn net.Conn
 			if conn, err = listener.Accept(); err == nil {
 				connChan <- conn
@@ -207,4 +307,57 @@ func chat(conn net.Conn) {
 			return
 		}
 	}
+}
+
+func discoverUdpAddr(stunServerAddr string) (*net.UDPConn, *net.UDPAddr, error) {
+	// We listen on a random port. This is our local UDP socket.
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Send a packet to the STUN server to open the NAT port.
+	stunAddr, err := net.ResolveUDPAddr("udp", stunServerAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, err := conn.WriteToUDP([]byte("ping"), stunAddr); err != nil {
+		return nil, nil, err
+	}
+
+	// Wait for the response from the STUN server.
+	buf := make([]byte, 1024)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	n, _, err := conn.ReadFromUDP(buf)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// The response is our public address.
+	publicAddr, err := net.ResolveUDPAddr("udp", string(buf[:n]))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return conn, publicAddr, nil
+}
+
+func getTCPListener(localPort int) (l net.Listener, err error) {
+	localAddr := &net.UDPAddr{IP: net.IPv4zero, Port: localPort}
+	lc := net.ListenConfig{Control: controlFunc}
+	l, err = lc.Listen(context.Background(), "tcp", localAddr.String())
+	return
+}
+
+func getUDPListener() {
+
+}
+
+var controlFunc = func(network, address string, c syscall.RawConn) error {
+	var controlErr error
+	err := c.Control(func(fd uintptr) { controlErr = setReuseAddr(fd) })
+	if err != nil {
+		return err
+	}
+	return controlErr
 }
