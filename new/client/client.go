@@ -196,6 +196,7 @@ func punchUDPHole(resp *PeerResponse) (conn net.Conn, err error) {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
+		fmt.Println(string(buf[:n]), buf[:n])
 		if string(buf[:n]) == "ping" {
 			return net.Conn(resp.UDPConn), nil
 		}

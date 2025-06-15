@@ -128,7 +128,7 @@ func server(conn net.Conn, hello ClientHello, publicAddr string) {
 }
 
 func startUdpStunServer() {
-	addr, err := net.ResolveUDPAddr("udp", ":1001")
+	addr, err := net.ResolveUDPAddr("udp", ":1000")
 	if err != nil {
 		log.Fatalf("UDP: Failed to resolve address: %v", err)
 	}
