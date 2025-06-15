@@ -143,7 +143,8 @@ func getUDPPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error)
 		return nil, err
 	}
 
-	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "tcp", UDPAddress: udpaddr.String()}
+	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "udp", UDPAddress: udpaddr.String()}
+	fmt.Println("SENDING:", hello)
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
 		return nil, err
 	}
@@ -187,9 +188,9 @@ func punchUDPHole(resp *PeerResponse) (conn net.Conn, err error) {
 	buf := make([]byte, 1024)
 	start := time.Now()
 	for {
-		fmt.Println("udp read")
 		n, _, err := resp.UDPConn.ReadFromUDP(buf)
 		if err != nil {
+			fmt.Println(err)
 			if time.Since(start).Seconds() > 20 {
 				return nil, fmt.Errorf("20 second UDP read timeout: %s", err)
 			}
@@ -328,7 +329,6 @@ func discoverUdpAddr(stunServerAddr string) (*net.UDPConn, *net.UDPAddr, error) 
 
 	// Wait for the response from the STUN server.
 	buf := make([]byte, 1024)
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
 		return nil, nil, err
@@ -348,10 +348,6 @@ func getTCPListener(localPort int) (l net.Listener, err error) {
 	lc := net.ListenConfig{Control: controlFunc}
 	l, err = lc.Listen(context.Background(), "tcp", localAddr.String())
 	return
-}
-
-func getUDPListener() {
-
 }
 
 var controlFunc = func(network, address string, c syscall.RawConn) error {
