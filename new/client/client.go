@@ -26,12 +26,11 @@ type ServerResponse struct {
 
 func main() {
 	serverAddr := os.Args[1]
-	role := os.Args[2]
-	uuid := os.Args[3]
+	uuid := os.Args[2]
 	var targetIP string
 
-	if role == "client" {
-		targetIP = os.Args[4]
+	if len(os.Args) > 3 {
+		targetIP = os.Args[3]
 	}
 
 	err, localPort, peerAddress := getRemovePeeringAddress(serverAddr, uuid, targetIP)
