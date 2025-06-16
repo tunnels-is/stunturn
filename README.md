@@ -6,9 +6,9 @@ The tunnels NAT penetrator pairs `initiators` and `receivers` using an `access_k
  - add more (outside module) error flow control
 
 ## Small note about the implementation
-We deviced to use the concepts of `initiator` and `receiver` in order to enable greater horizontal scaling.
-The `initiator` will open a connection and keep it open until a matching `receiver` checks in (30 second timeout).
-The `receiver` uses a standard HTTP request to check if any `initiators` are waiting (exits instantly if no `initiators` are waiting).
+We deviced to use the concepts of `initiator` and `receiver` in order to enable greater horizontal scaling.</br>
+The `initiator` will open a connection and keep it open until a matching `receiver` checks in (30 second timeout).</br>
+The `receiver` uses a standard HTTP request to check if any `initiators` are waiting (exits instantly if no `initiators` are waiting).</br>
 Doing it this way prevents socket buildup on both sides of the signaling process.
 
 ## Public signaling server comming soon
@@ -55,8 +55,8 @@ Example: ./server 11.11.11.11:1000
 ```
 
 ## Initiator
-Folder location: client
-The `initiator` will open and hold a connection to the signal server until a `receiver` calls in and they get matched.
+Folder location: client</br>
+The `initiator` will open and hold a connection to the signal server until a `receiver` calls in and they get matched.</br>
 NOTE: initiator and receiver `access_key` must match.
 ```bash
 $ ./client [signal_server_address] [access_key] [protocol] [server_ip]
@@ -65,8 +65,8 @@ Example: ./client 11.11.11.11:1000 randomaccesskey tcp 12.12.12.12
 ```
 
 ## Receiver (ip: 12.12.12.12)
-Folder location: client
-The receiver does not care about the protocol or an incomming IP.
+Folder location: client</br>
+The receiver does not care about the protocol or an incomming IP.</br>
 It makes a single HTTP request to check if there are `initiators` waiting to connect to it.
 ```bash
 $ ./client [signal_server_address] [access_key]
