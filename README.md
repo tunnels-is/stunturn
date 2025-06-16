@@ -14,6 +14,10 @@ Doing it this way prevents socket buildup on both sides of the signaling process
 ## Public signaling server comming soon
 We will be launching a public signaling server @ signal.tunnels.is this week (free of use).
 
+## Protocols supported
+ - tcp
+ - udp
+
 ## Launching your own server
 You can use the 'server_test' code to launch your own server
 ```bash
@@ -75,6 +79,3 @@ $ ./client [signal_server_address] [access_key]
 Example: ./client 11.11.11.11:1000 randomaccesskey
 ```
 
-## Protocols supported
- - tcp
- - udp
