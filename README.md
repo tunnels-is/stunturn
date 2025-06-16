@@ -67,7 +67,8 @@ Example: ./client 11.11.11.11:1000 randomaccesskey tcp 12.12.12.12
 ## Receiver (ip: 12.12.12.12)
 Folder location: client</br>
 The receiver does not care about the protocol or an incomming IP.</br>
-It makes a single HTTP request to check if there are `initiators` waiting to connect to it.
+It makes a single HTTP request to check if there are `initiators` waiting to connect to it.</br>
+NOTE: initiator and receiver `access_key` must match.
 ```bash
 $ ./client [signal_server_address] [access_key]
 
