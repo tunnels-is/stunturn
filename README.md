@@ -7,6 +7,7 @@ We will be launching a public signaling server @ signal.tunnels.is this week (fr
 ## todo
  - add configurable timeouts
  - add more (outside module) error flow control
+ - multi `initiator` to `receiver` support
 
 ## Small note about the implementation
 We deviced to use the concepts of `initiator` and `receiver` in order to enable greater horizontal scaling.</br>
