@@ -7,5 +7,5 @@ import (
 )
 
 func main() {
-	server.Start(os.Args[1])
+	_ = server.Start(os.Args[1])
 }

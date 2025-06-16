@@ -32,10 +32,10 @@ func makePeeringKey(uuid, ip string) string {
 
 var waitingPeers sync.Map
 
-func Start(address string) {
+func Start(address string) (err error) {
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		return err
 	}
 	defer listener.Close()
 	go startUdpStunServer()
@@ -43,7 +43,7 @@ func Start(address string) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			// log.Printf("Failed to accept connection: %v", err)
+			time.Sleep(1 * time.Millisecond)
 			continue
 		}
 		go handleConnection(conn)
