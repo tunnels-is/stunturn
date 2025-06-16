@@ -70,7 +70,7 @@ func main() {
 			panic(err)
 		}
 		fmt.Println(err, resp)
-		err = client.PunchUDPHole(resp)
+		_, err = client.PunchUDPHole(resp)
 		if err != nil {
 			log.Fatalf("❌ Hole punching failed: %v", err)
 		}
