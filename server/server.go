@@ -61,13 +61,13 @@ func handleConnection(conn net.Conn) {
 	clientPublicAddr := conn.RemoteAddr().String()
 
 	if hello.TargetIP == "" {
-		server(conn, hello, clientPublicAddr)
+		receiver(conn, hello, clientPublicAddr)
 	} else {
-		client(conn, hello, clientPublicAddr)
+		initiator(conn, hello, clientPublicAddr)
 	}
 }
 
-func client(conn net.Conn, hello ClientHello, publicAddr string) {
+func initiator(conn net.Conn, hello ClientHello, publicAddr string) {
 	defer conn.Close()
 	defer waitingPeers.Delete(hello.UUID)
 
@@ -89,12 +89,12 @@ func client(conn net.Conn, hello ClientHello, publicAddr string) {
 		if err := json.NewEncoder(conn).Encode(resp); err != nil {
 			json.NewEncoder(conn).Encode(ClientResponse{Error: "Encoding error"})
 		}
-	case <-time.After(20 * time.Second):
+	case <-time.After(30 * time.Second):
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "Timed out waiting for an initiator"})
 	}
 }
 
-func server(conn net.Conn, hello ClientHello, publicAddr string) {
+func receiver(conn net.Conn, hello ClientHello, publicAddr string) {
 	defer conn.Close()
 
 	sp := strings.Split(publicAddr, ":")

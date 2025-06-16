@@ -1,11 +1,10 @@
 # Tunnels NAT Penetrator
 The tunnels NAT penetrator pairs `initiators` and `receivers` using an `access_key`.
 
-
 ## Small note about the implementation
 We deviced to use the concepts of `initiator` and `receiver` in order to enable greater horizontal scaling.
-The `initiator` will open a connection and keep it open until a matching `receiver` checks in.
-The `receiver` uses a standard HTTP request to check if any `initiators` are waiting.
+The `initiator` will open a connection and keep it open until a matching `receiver` checks in (30 second timeout).
+The `receiver` uses a standard HTTP request to check if any `initiators` are waiting (exits instantly if no `initiators` are waiting).
 Doing it this way prevents socket buildup on both sides of the signaling process.
 
 ## Public signaling server comming soon
