@@ -56,7 +56,7 @@ type PeerResponse struct {
 	UDPConn     *net.UDPConn
 }
 
-func GetClientPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error) {
+func GetClientPeer(signalServer, key, ip string) (res *PeerResponse, err error) {
 	conn, err := net.Dial("tcp4", signalServer)
 	if conn != nil {
 		defer conn.Close()
@@ -130,7 +130,7 @@ func GetUDPPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error)
 	}, nil
 }
 
-func PunchUDPHole(resp *PeerResponse) (err error) {
+func PunchUDPHole(resp *PeerResponse) (uc *net.UDPConn, err error) {
 	peerAddress, err := net.ResolveUDPAddr("udp4", resp.PeerAddress)
 
 	killGoroutines := make(chan byte, 10)
@@ -158,13 +158,13 @@ func PunchUDPHole(resp *PeerResponse) (err error) {
 		n, _, err := resp.UDPConn.ReadFromUDP(buf)
 		if err != nil {
 			if time.Since(start).Seconds() > 20 {
-				return fmt.Errorf("20 second UDP read timeout: %s", err)
+				return nil, fmt.Errorf("20 second UDP read timeout: %s", err)
 			}
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		if string(buf[:n]) == "ping" {
-			return nil
+			return resp.UDPConn, nil
 		}
 	}
 }

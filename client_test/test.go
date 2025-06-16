@@ -32,7 +32,7 @@ func main() {
 		}
 		fmt.Println(err, resp)
 		if resp.Protocol == "udp" {
-			err := client.PunchUDPHole(resp)
+			_, err := client.PunchUDPHole(resp)
 			if err != nil {
 				log.Fatalf("❌ Hole punching failed: %v", err)
 			}
