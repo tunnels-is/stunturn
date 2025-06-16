@@ -71,7 +71,6 @@ func GetClientPeer(signalServer, key, ip string) (udpresp *PeerResponse, err err
 	}
 
 	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "", UDPAddress: udpaddr.String()}
-	fmt.Println("SENDING:", hello)
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
 		return nil, err
 	}
@@ -113,7 +112,6 @@ func GetUDPPeer(signalServer, key, ip string) (udpresp *PeerResponse, err error)
 	}
 
 	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "udp", UDPAddress: udpaddr.String()}
-	fmt.Println("SENDING:", hello)
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
 		return nil, err
 	}
@@ -159,14 +157,12 @@ func PunchUDPHole(resp *PeerResponse) (err error) {
 	for {
 		n, _, err := resp.UDPConn.ReadFromUDP(buf)
 		if err != nil {
-			fmt.Println(err)
 			if time.Since(start).Seconds() > 20 {
 				return fmt.Errorf("20 second UDP read timeout: %s", err)
 			}
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		fmt.Println(string(buf[:n]), buf[:n])
 		if string(buf[:n]) == "ping" {
 			return nil
 		}
@@ -188,9 +184,6 @@ func PuncTCPhHole(resp *PeerResponse) (net.Conn, error) {
 	errChan := make(chan error, 2)
 	killGoroutines := make(chan byte, 10)
 	go func() {
-		defer func() {
-			fmt.Println("dialer exiting")
-		}()
 		for range 300 {
 			select {
 			case <-killGoroutines:
@@ -206,9 +199,6 @@ func PuncTCPhHole(resp *PeerResponse) (net.Conn, error) {
 	}()
 
 	go func() {
-		defer func() {
-			fmt.Println("listener exiting")
-		}()
 		var err error
 		for range 300 {
 			select {
@@ -255,13 +245,11 @@ func PuncTCPhHole(resp *PeerResponse) (net.Conn, error) {
 }
 
 func discoverUdpAddr(stunServerAddr string) (*net.UDPConn, *net.UDPAddr, error) {
-	// We listen on a random port. This is our local UDP socket.
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Send a packet to the STUN server to open the NAT port.
 	stunAddr, err := net.ResolveUDPAddr("udp", stunServerAddr)
 	if err != nil {
 		return nil, nil, err
@@ -270,14 +258,12 @@ func discoverUdpAddr(stunServerAddr string) (*net.UDPConn, *net.UDPAddr, error) 
 		return nil, nil, err
 	}
 
-	// Wait for the response from the STUN server.
 	buf := make([]byte, 1024)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// The response is our public address.
 	publicAddr, err := net.ResolveUDPAddr("udp", string(buf[:n]))
 	if err != nil {
 		return nil, nil, err

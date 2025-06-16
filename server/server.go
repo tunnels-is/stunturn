@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -80,20 +79,15 @@ func client(conn net.Conn, hello ClientHello, publicAddr string) {
 	hello.ResponseChan = make(chan ClientResponse)
 
 	key := makePeeringKey(hello.UUID, hello.TargetIP)
-	fmt.Println("CLIENT KEY:", key)
 	if _, loaded := waitingPeers.LoadOrStore(key, hello); loaded {
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "UUID already in use"})
 		return
 	}
 
-	log.Printf("Receiver registered with UUID %s. Waiting for initiator...", hello.UUID)
-
 	select {
 	case resp := <-hello.ResponseChan:
 		if err := json.NewEncoder(conn).Encode(resp); err != nil {
 			json.NewEncoder(conn).Encode(ClientResponse{Error: "Encoding error"})
-		} else {
-			log.Printf("Successfully sent peer info to receiver %s", hello.UUID)
 		}
 	case <-time.After(20 * time.Second):
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "Timed out waiting for an initiator"})
@@ -106,7 +100,6 @@ func server(conn net.Conn, hello ClientHello, publicAddr string) {
 	sp := strings.Split(publicAddr, ":")
 
 	key := makePeeringKey(hello.UUID, sp[0])
-	fmt.Println("SERVER KEY:", key)
 	value, ok := waitingPeers.LoadAndDelete(key)
 	if !ok {
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "Receiver with that UUID not found"})
@@ -115,7 +108,6 @@ func server(conn net.Conn, hello ClientHello, publicAddr string) {
 
 	waitingPeer := value.(ClientHello)
 
-	fmt.Println("SERVER!")
 	if waitingPeer.Protocol == "udp" {
 		waitingPeer.ResponseChan <- ClientResponse{PeerAddress: hello.UDPAddress, Protocol: waitingPeer.Protocol}
 	} else {
@@ -123,7 +115,6 @@ func server(conn net.Conn, hello ClientHello, publicAddr string) {
 	}
 
 	json.NewEncoder(conn).Encode(ClientResponse{PeerAddress: waitingPeer.PublicAddress, Protocol: waitingPeer.Protocol})
-	fmt.Println("DONE!")
 }
 
 func startUdpStunServer() {
