@@ -20,6 +20,11 @@ Doing it this way prevents socket buildup on both sides of the signaling process
  - tcp
  - udp
 
+## Platforms supported
+ - linux
+ - Darwin
+ - Windows
+
 ## Launching your own server
 You can use the 'server_test' code to launch your own server
 ```bash
