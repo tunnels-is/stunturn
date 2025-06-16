@@ -5,7 +5,7 @@ The tunnels NAT penetrator pairs `initiators` and `receivers` using an `access_k
 We will be launching a public signaling server @ signal.tunnels.is this week (free of use).
 
 ## Basic usage
-```
+```go
 import "github.com/zveinn/stunturn/client"
 
 // This method open a long-lived connection that waits for a peer
