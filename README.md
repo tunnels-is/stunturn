@@ -1,6 +1,9 @@
 # Tunnels NAT Penetrator
 The tunnels NAT penetrator pairs `initiators` and `receivers` using an `access_key`.
 
+## Public signaling server comming soon
+We will be launching a public signaling server @ signal.tunnels.is this week (free of use).
+
 ## todo
  - add configurable timeouts
  - add more (outside module) error flow control
@@ -11,8 +14,6 @@ The `initiator` will open a connection and keep it open until a matching `receiv
 The `receiver` uses a standard HTTP request to check if any `initiators` are waiting (exits instantly if no `initiators` are waiting).</br>
 Doing it this way prevents socket buildup on both sides of the signaling process.
 
-## Public signaling server comming soon
-We will be launching a public signaling server @ signal.tunnels.is this week (free of use).
 
 ## Protocols supported
  - tcp
