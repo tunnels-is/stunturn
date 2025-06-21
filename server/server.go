@@ -60,6 +60,11 @@ func handleConnection(conn net.Conn) {
 
 	clientPublicAddr := conn.RemoteAddr().String()
 
+	if hello.UUID == "" {
+		_ = conn.Close()
+		return
+	}
+
 	if hello.TargetIP == "" {
 		receiver(conn, hello, clientPublicAddr)
 	} else {
