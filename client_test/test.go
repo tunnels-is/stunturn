@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/zveinn/stunturn/client"
+	"github.com/tunnels-is/stunturn/client"
 )
 
 func main() {

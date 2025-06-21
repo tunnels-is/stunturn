@@ -1,4 +1,4 @@
-module github.com/zveinn/stunturn
+module github.com/tunnels-is/stunturn
 
 go 1.24.1
 

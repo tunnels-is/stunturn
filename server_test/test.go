@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/zveinn/stunturn/server"
+	"github.com/tunnels-is/stunturn/server"
 )
 
 func main() {
