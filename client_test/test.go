@@ -26,13 +26,13 @@ func main() {
 	}
 
 	if isServer {
-		resp, err := client.GetClientPeer(serverAddr, uuid, targetIP)
+		resp, err := client.GetClientPeer(nil, serverAddr, uuid, targetIP)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println(err, resp)
 		if resp.Protocol == "udp" {
-			_, err := client.PunchUDPHole(resp)
+			_, err := client.PunchUDPHole(resp, 300, 10)
 			if err != nil {
 				log.Fatalf("❌ Hole punching failed: %v", err)
 			}
@@ -40,7 +40,7 @@ func main() {
 			ChatUDP(resp)
 
 		} else {
-			p2pConn, err := client.PuncTCPhHole(resp)
+			p2pConn, err := client.PuncTCPhHole(resp, nil, 300, 10)
 			if err != nil {
 				log.Fatalf("❌ Hole punching failed: %v", err)
 			}
@@ -51,13 +51,13 @@ func main() {
 	}
 
 	if proto == "tcp" {
-		resp, err := client.GetTCPPeer(serverAddr, uuid, targetIP)
+		resp, err := client.GetTCPPeer(nil, serverAddr, uuid, targetIP)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println(err, resp)
 
-		p2pConn, err := client.PuncTCPhHole(resp)
+		p2pConn, err := client.PuncTCPhHole(resp, nil, 300, 10)
 		if err != nil {
 			log.Fatalf("❌ Hole punching failed: %v", err)
 		}
@@ -65,12 +65,12 @@ func main() {
 		Chat(p2pConn)
 
 	} else if proto == "udp" {
-		resp, err := client.GetUDPPeer(serverAddr, uuid, targetIP)
+		resp, err := client.GetUDPPeer(nil, serverAddr, uuid, targetIP)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println(err, resp)
-		_, err = client.PunchUDPHole(resp)
+		_, err = client.PunchUDPHole(resp, 300, 10)
 		if err != nil {
 			log.Fatalf("❌ Hole punching failed: %v", err)
 		}
