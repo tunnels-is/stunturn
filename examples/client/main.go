@@ -77,6 +77,7 @@ func main() {
 }
 
 func startTCPChat(conn net.Conn) {
+	fmt.Println("TCP CHAT STARTED")
 	defer conn.Close()
 
 	// Start goroutine to read messages from peer

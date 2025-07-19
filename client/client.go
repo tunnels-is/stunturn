@@ -122,6 +122,7 @@ func (st *StunTurn) GetTCPPeer() (err error) {
 		return err
 	}
 
+	fmt.Println("GOT TCP PEER:", resp.PeerAddress)
 	st.PeerResponse = &PeerResponse{
 		Protocol:    resp.Protocol,
 		LocalPort:   conn.LocalAddr().(*net.TCPAddr).Port,
@@ -159,6 +160,7 @@ func (st *StunTurn) GetClientPeer() (err error) {
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
 		return err
 	}
+	fmt.Println("GOT PEER:", resp.PeerAddress)
 	if resp.Protocol == "tcp" {
 		st.PeerResponse = &PeerResponse{
 			Protocol:    resp.Protocol,
@@ -264,6 +266,7 @@ func (st *StunTurn) PunchUDPHole() (uc *net.UDPConn, err error) {
 
 // PunchTCPHole attempts to establish a TCP hole punch connection
 func (st *StunTurn) PunchTCPHole() (net.Conn, error) {
+	fmt.Println("PUNCHING TCP")
 	if st.PeerResponse == nil {
 		return nil, fmt.Errorf("missing PeerResponse")
 	}
