@@ -138,7 +138,7 @@ func startTCPChat(conn net.Conn) {
 		for {
 			n, err := conn.Read(buffer)
 			if err != nil {
-				fmt.Println("\nPeer disconnected.")
+				fmt.Println("\nPeer disconnected.", err)
 				os.Exit(0)
 			}
 			message := strings.TrimSpace(string(buffer[:n]))
