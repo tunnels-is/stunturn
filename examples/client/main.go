@@ -17,6 +17,10 @@ func main() {
 	key := flag.String("key", "", "shared key")
 	proto := flag.String("proto", "tcp", "protocol (tcp/udp)")
 	flag.Parse()
+	ipaddr := ""
+	if ip != nil {
+		ipaddr = *ip
+	}
 	st := client.New(client.StunTurnOptions{
 		SignalServer:        "192.248.170.119:1111",
 		Dialer:              nil,
@@ -24,7 +28,7 @@ func main() {
 		TimeoutSeconds:      30,
 		UDPDiscoveryTimeout: 5,
 		Key:                 *key,
-		IP:                  *ip,
+		IP:                  ipaddr,
 		TLSConfig:           nil,
 		IsTLSServer:         false,
 	})
