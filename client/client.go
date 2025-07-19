@@ -155,6 +155,7 @@ func (st *StunTurn) GetClientPeer() (err error) {
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
 		return err
 	}
+	fmt.Println("GOT PEER")
 	if resp.Protocol == "tcp" {
 		st.PeerResponse = &PeerResponse{
 			Protocol:    resp.Protocol,
@@ -204,6 +205,7 @@ func (st *StunTurn) GetUDPPeer() (err error) {
 		return err
 	}
 
+	fmt.Println("GOT UDP PEER")
 	st.PeerResponse = &PeerResponse{
 		Protocol:    resp.Protocol,
 		LocalPort:   udpaddr.Port,
@@ -219,6 +221,7 @@ func (st *StunTurn) PunchUDPHole() (uc *net.UDPConn, err error) {
 	if st.PeerResponse == nil {
 		return nil, fmt.Errorf("missing PeerResponse")
 	}
+	fmt.Println("PUNCH UDP")
 	peerAddress, err := net.ResolveUDPAddr("udp4", st.PeerResponse.PeerAddress)
 
 	killGoroutines := make(chan byte, 10)
