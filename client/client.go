@@ -10,6 +10,58 @@ import (
 	"time"
 )
 
+// StunTurn represents a STUN/TURN client with configuration
+type StunTurn struct {
+	signalServer         string
+	dialer               *net.Dialer
+	tryCount             int
+	timeoutSeconds       int
+	stunDiscoveryTimeout time.Duration
+	key                  string
+	ip                   string
+	peerResponse         *PeerResponse
+}
+
+// StunTurnOptions contains configuration options for StunTurn
+type StunTurnOptions struct {
+	SignalServer         string
+	Dialer               *net.Dialer
+	TryCount             int           // Number of hole punching attempts (default: 300)
+	TimeoutSeconds       int           // Timeout for hole punching in seconds (default: 10)
+	StunDiscoveryTimeout time.Duration // Timeout for STUN discovery (default: 10 seconds)
+	Key                  string        // UUID key for peer identification
+	IP                   string        // Target IP address
+}
+
+// New creates a new StunTurn instance with the provided options
+func New(opts StunTurnOptions) *StunTurn {
+	// Set default values
+	tryCount := opts.TryCount
+	if tryCount == 0 {
+		tryCount = 300 // Default try count
+	}
+
+	timeoutSeconds := opts.TimeoutSeconds
+	if timeoutSeconds == 0 {
+		timeoutSeconds = 10 // Default timeout
+	}
+
+	stunDiscoveryTimeout := opts.StunDiscoveryTimeout
+	if stunDiscoveryTimeout == 0 {
+		stunDiscoveryTimeout = 10 * time.Second // Default STUN discovery timeout
+	}
+
+	return &StunTurn{
+		signalServer:         opts.SignalServer,
+		dialer:               opts.Dialer,
+		tryCount:             tryCount,
+		timeoutSeconds:       timeoutSeconds,
+		stunDiscoveryTimeout: stunDiscoveryTimeout,
+		key:                  opts.Key,
+		ip:                   opts.IP,
+	}
+}
+
 type ClientHello struct {
 	UUID       string `json:"uuid"`
 	TargetIP   string `json:"target_ip"`
@@ -23,12 +75,21 @@ type ServerResponse struct {
 	Error       string `json:"error,omitempty"`
 }
 
-func GetTCPPeer(dialer *net.Dialer, signalServer, key, ip string) (tcpresp *PeerResponse, err error) {
+type PeerResponse struct {
+	Protocol    string
+	LocalPort   int
+	PeerAddress string
+	UDPAddr     *net.UDPAddr
+	UDPConn     *net.UDPConn
+}
+
+// GetTCPPeer establishes a TCP peer connection through the signal server
+func (st *StunTurn) GetTCPPeer() (tcpresp *PeerResponse, err error) {
 	var conn net.Conn
-	if dialer == nil {
-		conn, err = net.Dial("tcp4", signalServer)
+	if st.dialer == nil {
+		conn, err = net.Dial("tcp4", st.signalServer)
 	} else {
-		conn, err = dialer.Dial("tcp4", signalServer)
+		conn, err = st.dialer.Dial("tcp4", st.signalServer)
 	}
 	if conn != nil {
 		defer conn.Close()
@@ -37,7 +98,7 @@ func GetTCPPeer(dialer *net.Dialer, signalServer, key, ip string) (tcpresp *Peer
 		return nil, err
 	}
 
-	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "tcp"}
+	hello := ClientHello{UUID: st.key, TargetIP: st.ip, Protocol: "tcp"}
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
 		return nil, err
 	}
@@ -54,20 +115,13 @@ func GetTCPPeer(dialer *net.Dialer, signalServer, key, ip string) (tcpresp *Peer
 	}, nil
 }
 
-type PeerResponse struct {
-	Protocol    string
-	LocalPort   int
-	PeerAddress string
-	UDPAddr     *net.UDPAddr
-	UDPConn     *net.UDPConn
-}
-
-func GetClientPeer(dialer *net.Dialer, signalServer, key, ip string) (res *PeerResponse, err error) {
+// GetClientPeer establishes a client peer connection (auto-detects TCP/UDP)
+func (st *StunTurn) GetClientPeer() (res *PeerResponse, err error) {
 	var conn net.Conn
-	if dialer != nil {
-		conn, err = dialer.Dial("tcp4", signalServer)
+	if st.dialer != nil {
+		conn, err = st.dialer.Dial("tcp4", st.signalServer)
 	} else {
-		conn, err = net.Dial("tcp4", signalServer)
+		conn, err = net.Dial("tcp4", st.signalServer)
 	}
 	if conn != nil {
 		defer conn.Close()
@@ -76,12 +130,12 @@ func GetClientPeer(dialer *net.Dialer, signalServer, key, ip string) (res *PeerR
 		return nil, err
 	}
 
-	udpcon, udpaddr, err := discoverUdpAddr(signalServer)
+	udpcon, udpaddr, err := st.discoverUdpAddr()
 	if err != nil {
 		return nil, err
 	}
 
-	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "", UDPAddress: udpaddr.String()}
+	hello := ClientHello{UUID: st.key, TargetIP: st.ip, Protocol: "", UDPAddress: udpaddr.String()}
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
 		return nil, err
 	}
@@ -108,12 +162,13 @@ func GetClientPeer(dialer *net.Dialer, signalServer, key, ip string) (res *PeerR
 
 }
 
-func GetUDPPeer(dialer *net.Dialer, signalServer, key, ip string) (udpresp *PeerResponse, err error) {
+// GetUDPPeer establishes a UDP peer connection through the signal server
+func (st *StunTurn) GetUDPPeer() (udpresp *PeerResponse, err error) {
 	var conn net.Conn
-	if dialer != nil {
-		conn, err = dialer.Dial("tcp4", signalServer)
+	if st.dialer != nil {
+		conn, err = st.dialer.Dial("tcp4", st.signalServer)
 	} else {
-		conn, err = net.Dial("tcp4", signalServer)
+		conn, err = net.Dial("tcp4", st.signalServer)
 	}
 	if conn != nil {
 		defer conn.Close()
@@ -122,12 +177,12 @@ func GetUDPPeer(dialer *net.Dialer, signalServer, key, ip string) (udpresp *Peer
 		return nil, err
 	}
 
-	udpcon, udpaddr, err := discoverUdpAddr(signalServer)
+	udpcon, udpaddr, err := st.discoverUdpAddr()
 	if err != nil {
 		return nil, err
 	}
 
-	hello := ClientHello{UUID: key, TargetIP: ip, Protocol: "udp", UDPAddress: udpaddr.String()}
+	hello := ClientHello{UUID: st.key, TargetIP: st.ip, Protocol: "udp", UDPAddress: udpaddr.String()}
 	if err := json.NewEncoder(conn).Encode(hello); err != nil {
 		return nil, err
 	}
@@ -146,8 +201,9 @@ func GetUDPPeer(dialer *net.Dialer, signalServer, key, ip string) (udpresp *Peer
 	}, nil
 }
 
-func PunchUDPHole(resp *PeerResponse, tryCount int, timeoutSeconds int) (uc *net.UDPConn, err error) {
-	peerAddress, err := net.ResolveUDPAddr("udp4", resp.PeerAddress)
+// PunchUDPHole attempts to establish a UDP hole punch connection
+func (st *StunTurn) PunchUDPHole() (uc *net.UDPConn, err error) {
+	peerAddress, err := net.ResolveUDPAddr("udp4", st.peerResponse.PeerAddress)
 
 	killGoroutines := make(chan byte, 10)
 	defer func() {
@@ -155,14 +211,14 @@ func PunchUDPHole(resp *PeerResponse, tryCount int, timeoutSeconds int) (uc *net
 	}()
 
 	go func() {
-		for range tryCount {
+		for range st.tryCount {
 			select {
 			case <-killGoroutines:
 				return
 			default:
 				time.Sleep(100 * time.Millisecond)
 			}
-			if _, err := resp.UDPConn.WriteToUDP([]byte("ping"), peerAddress); err != nil {
+			if _, err := st.peerResponse.UDPConn.WriteToUDP([]byte("ping"), peerAddress); err != nil {
 				continue
 			}
 		}
@@ -170,43 +226,44 @@ func PunchUDPHole(resp *PeerResponse, tryCount int, timeoutSeconds int) (uc *net
 
 	buf := make([]byte, 1024)
 	start := time.Now()
-	for range tryCount {
-		n, _, err := resp.UDPConn.ReadFromUDP(buf)
+	for range st.tryCount {
+		n, _, err := st.peerResponse.UDPConn.ReadFromUDP(buf)
 		if err != nil {
-			if time.Since(start).Seconds() > float64(timeoutSeconds) {
+			if time.Since(start).Seconds() > float64(st.timeoutSeconds) {
 				return nil, fmt.Errorf("20 second UDP read timeout: %s", err)
 			}
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		if string(buf[:n]) == "ping" {
-			return resp.UDPConn, nil
+			return st.peerResponse.UDPConn, nil
 		}
 	}
 	return nil, errors.New("Unable to punch UDP hole")
 }
 
-func PuncTCPhHole(resp *PeerResponse, dialer *net.Dialer, tryCount int, timeoutSeconds int) (net.Conn, error) {
+// PunchTCPHole attempts to establish a TCP hole punch connection
+func (st *StunTurn) PunchTCPHole() (net.Conn, error) {
 	var rAddr string
-	remoteAddr, err := net.ResolveTCPAddr("tcp4", resp.PeerAddress)
+	remoteAddr, err := net.ResolveTCPAddr("tcp4", st.peerResponse.PeerAddress)
 	if err != nil {
 		return nil, err
 	}
 	rAddr = remoteAddr.String()
 
-	localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: resp.LocalPort}
+	localAddr := &net.TCPAddr{IP: net.IPv4zero, Port: st.peerResponse.LocalPort}
+	dialer := st.dialer
 	if dialer == nil {
-		dialer = &net.Dialer{LocalAddr: localAddr, Timeout: 5 * time.Second, Control: controlFunc}
-	} else {
-		dialer.Control = controlFunc
-		dialer.LocalAddr = localAddr
+		dialer = &net.Dialer{LocalAddr: localAddr, Timeout: 5 * time.Second}
 	}
 
+	dialer.Control = controlFunc
+	dialer.LocalAddr = localAddr
 	connChan := make(chan net.Conn)
 	errChan := make(chan error, 2)
 	killGoroutines := make(chan byte, 10)
 	go func() {
-		for range tryCount {
+		for range st.tryCount {
 			select {
 			case <-killGoroutines:
 				return
@@ -226,7 +283,7 @@ func PuncTCPhHole(resp *PeerResponse, dialer *net.Dialer, tryCount int, timeoutS
 
 	go func() {
 		var err error
-		for range tryCount {
+		for range st.tryCount {
 			select {
 			case <-killGoroutines:
 				return
@@ -234,7 +291,7 @@ func PuncTCPhHole(resp *PeerResponse, dialer *net.Dialer, tryCount int, timeoutS
 				time.Sleep(100 * time.Millisecond)
 			}
 			var listener net.Listener
-			listener, err = getTCPListener(resp.LocalPort)
+			listener, err = st.getTCPListener(st.peerResponse.LocalPort)
 			if err != nil {
 				select {
 				case errChan <- err:
@@ -268,19 +325,21 @@ func PuncTCPhHole(resp *PeerResponse, dialer *net.Dialer, tryCount int, timeoutS
 		case conn := <-connChan:
 			return conn, nil
 		case outErr = <-errChan:
-		case <-time.After(time.Duration(timeoutSeconds) * time.Second):
+		case <-time.After(time.Duration(st.timeoutSeconds) * time.Second):
 			return nil, fmt.Errorf("hole punching timed out, err: %s", outErr)
 		}
 	}
 }
 
-func discoverUdpAddr(stunServerAddr string) (*net.UDPConn, *net.UDPAddr, error) {
+// Convenience methods using default configuration
+
+func (st *StunTurn) discoverUdpAddr() (*net.UDPConn, *net.UDPAddr, error) {
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	stunAddr, err := net.ResolveUDPAddr("udp", stunServerAddr)
+	stunAddr, err := net.ResolveUDPAddr("udp", st.signalServer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -289,7 +348,7 @@ func discoverUdpAddr(stunServerAddr string) (*net.UDPConn, *net.UDPAddr, error) 
 	}
 
 	buf := make([]byte, 1024)
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(st.stunDiscoveryTimeout))
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
 		return nil, nil, err
@@ -304,7 +363,7 @@ func discoverUdpAddr(stunServerAddr string) (*net.UDPConn, *net.UDPAddr, error) 
 	return conn, publicAddr, nil
 }
 
-func getTCPListener(localPort int) (l net.Listener, err error) {
+func (st *StunTurn) getTCPListener(localPort int) (l net.Listener, err error) {
 	localAddr := &net.UDPAddr{IP: net.IPv4zero, Port: localPort}
 	lc := net.ListenConfig{Control: controlFunc}
 	l, err = lc.Listen(context.Background(), "tcp", localAddr.String())
