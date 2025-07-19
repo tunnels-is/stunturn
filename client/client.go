@@ -372,6 +372,7 @@ func (st *StunTurn) PunchTCPHoleTLS() (net.Conn, error) {
 	// Wrap the connection with TLS
 	if st.IsTLSServer {
 		// This peer acts as TLS server
+		fmt.Println("SERVER HANDSHAKE..")
 		tlsConn := tls.Server(tcpConn, st.TLSConfig)
 		err = tlsConn.Handshake()
 		if err != nil {
@@ -381,6 +382,7 @@ func (st *StunTurn) PunchTCPHoleTLS() (net.Conn, error) {
 		return tlsConn, nil
 	} else {
 		// This peer acts as TLS client
+		fmt.Println("CLIENT HANDSHAKE..")
 		tlsConn := tls.Client(tcpConn, st.TLSConfig)
 		err = tlsConn.Handshake()
 		if err != nil {
