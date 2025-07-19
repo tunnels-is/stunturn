@@ -436,3 +436,8 @@ func (st *StunTurn) HasTLS() bool {
 func (st *StunTurn) IsTLSServer() bool {
 	return st.isTLSServer
 }
+
+// SetPeerResponse sets the peer response for hole punching operations
+func (st *StunTurn) SetPeerResponse(resp *PeerResponse) {
+	st.peerResponse = resp
+}
