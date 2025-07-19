@@ -25,8 +25,8 @@ func main() {
 		SignalServer:        "192.248.170.119:1111",
 		Dialer:              nil,
 		TryCount:            100,
-		TimeoutSeconds:      30,
-		UDPDiscoveryTimeout: 5,
+		TimeoutSeconds:      30 * time.Second,
+		UDPDiscoveryTimeout: 5 * time.Second,
 		Key:                 *key,
 		IP:                  ipaddr,
 		TLSConfig:           nil,
@@ -34,7 +34,10 @@ func main() {
 	})
 
 	if *ip == "" {
-		st.GetClientPeer()
+		err := st.GetClientPeer()
+		if err != nil {
+			panic(err)
+		}
 		if st.PeerResponse.Protocol == "tcp" {
 			tcpCon, err := st.PunchTCPHole()
 			if err != nil {

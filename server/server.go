@@ -38,7 +38,7 @@ func Start(address string) (err error) {
 		return err
 	}
 	defer listener.Close()
-	go startUdpStunServer()
+	go startUdpStunServer(address)
 
 	for {
 		conn, err := listener.Accept()
@@ -51,7 +51,6 @@ func Start(address string) (err error) {
 }
 
 func handleConnection(conn net.Conn) {
-
 	var hello ClientHello
 	if err := json.NewDecoder(conn).Decode(&hello); err != nil {
 		_ = conn.Close()
@@ -122,8 +121,8 @@ func receiver(conn net.Conn, hello ClientHello, publicAddr string) {
 	json.NewEncoder(conn).Encode(ClientResponse{PeerAddress: waitingPeer.PublicAddress, Protocol: waitingPeer.Protocol})
 }
 
-func startUdpStunServer() {
-	addr, err := net.ResolveUDPAddr("udp", ":1000")
+func startUdpStunServer(address string) {
+	addr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		log.Fatalf("UDP: Failed to resolve address: %v", err)
 	}

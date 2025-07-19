@@ -16,7 +16,7 @@ type StunTurn struct {
 	SignalServer        string
 	Dialer              *net.Dialer
 	TryCount            int
-	TimeoutSeconds      int
+	TimeoutSeconds      time.Duration
 	UDPDiscoveryTimeout time.Duration
 	Key                 string
 	IP                  string
@@ -30,7 +30,7 @@ type StunTurnOptions struct {
 	SignalServer        string
 	Dialer              *net.Dialer
 	TryCount            int           // Number of hole punching attempts (default: 300)
-	TimeoutSeconds      int           // Timeout for hole punching in seconds (default: 10)
+	TimeoutSeconds      time.Duration // Timeout for hole punching (default: 10)
 	UDPDiscoveryTimeout time.Duration // Timeout for UDP Address discovery (default: 10 seconds)
 	Key                 string        // UUID key for peer identification
 	IP                  string        // Target IP address
@@ -348,7 +348,7 @@ func (st *StunTurn) PunchTCPHole() (net.Conn, error) {
 		case conn := <-connChan:
 			return conn, nil
 		case outErr = <-errChan:
-		case <-time.After(time.Duration(st.TimeoutSeconds) * time.Second):
+		case <-time.After(st.TimeoutSeconds):
 			return nil, fmt.Errorf("hole punching timed out, err: %s", outErr)
 		}
 	}
