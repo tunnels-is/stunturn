@@ -10,7 +10,7 @@ import (
 )
 
 type ClientHello struct {
-	UUID       string `json:"uuid"`
+	Key        string `json:"uuid"`
 	TargetIP   string `json:"target_ip,omitempty"`
 	Protocol   string `json:"protocol"`
 	UDPAddress string `json:"address"`
@@ -59,23 +59,21 @@ func handleConnection(conn net.Conn) {
 
 	clientPublicAddr := conn.RemoteAddr().String()
 
-	if hello.UUID == "" {
+	if hello.Key == "" {
 		_ = conn.Close()
 		return
 	}
 
 	if hello.TargetIP == "" {
-		// fmt.Printf("RC: %+v", hello)
 		receiver(conn, hello, clientPublicAddr)
 	} else {
-		// fmt.Printf("IN: %+v", hello)
 		initiator(conn, hello, clientPublicAddr)
 	}
 }
 
 func initiator(conn net.Conn, hello ClientHello, publicAddr string) {
 	defer conn.Close()
-	defer waitingPeers.Delete(hello.UUID)
+	defer waitingPeers.Delete(hello.Key)
 
 	if hello.Protocol == "udp" {
 		hello.PublicAddress = hello.UDPAddress
@@ -83,8 +81,7 @@ func initiator(conn net.Conn, hello ClientHello, publicAddr string) {
 		hello.PublicAddress = publicAddr
 	}
 	hello.ResponseChan = make(chan ClientResponse)
-
-	key := makePeeringKey(hello.UUID, hello.TargetIP)
+	key := makePeeringKey(hello.Key, hello.TargetIP)
 	if _, loaded := waitingPeers.LoadOrStore(key, hello); loaded {
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "UUID already in use"})
 		return
@@ -105,8 +102,8 @@ func receiver(conn net.Conn, hello ClientHello, publicAddr string) {
 
 	sp := strings.Split(publicAddr, ":")
 
-	key := makePeeringKey(hello.UUID, sp[0])
-	value, ok := waitingPeers.LoadAndDelete(key)
+	key := makePeeringKey(hello.Key, sp[0])
+	value, ok := waitingPeers.Load(key)
 	if !ok {
 		json.NewEncoder(conn).Encode(ClientResponse{Error: "Receiver with that UUID not found"})
 		return
