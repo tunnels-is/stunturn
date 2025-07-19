@@ -87,8 +87,15 @@ func main() {
 		Key:                 *key,
 		IP:                  ipaddr,
 		TLSConfig:           tc,
-		IsTLSServer:         false,
 	})
+
+	if tl != nil {
+		if *tl == "client" {
+			st.IsTLSServer = false
+		} else {
+			st.IsTLSServer = true
+		}
+	}
 
 	if *ip == "" {
 		err := st.GetClientPeer()
