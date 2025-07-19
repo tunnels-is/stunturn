@@ -180,7 +180,6 @@ func generateCertificateForIP(ipStr string) error {
 		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		IPAddresses: []net.IP{ip},
-		DNSNames:    []string{"localhost"}, // Add localhost for convenience
 	}
 
 	// Create the certificate
