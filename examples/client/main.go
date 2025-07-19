@@ -2,10 +2,15 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"flag"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
 	"strings"
@@ -19,7 +24,19 @@ func main() {
 	key := flag.String("key", "", "shared key")
 	proto := flag.String("proto", "tcp", "protocol (tcp/udp)")
 	tl := flag.String("tls", "", "set tls server or client (server/client)")
+	genCert := flag.String("gen-cert", "", "generate certificate for given IP address")
 	flag.Parse()
+
+	// If gen-cert flag is provided, generate certificate and exit
+	if genCert != nil && *genCert != "" {
+		err := generateCertificateForIP(*genCert)
+		if err != nil {
+			fmt.Printf("Error generating certificate: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	ipaddr := ""
 	if ip != nil {
 		ipaddr = *ip
@@ -129,6 +146,79 @@ func main() {
 			startUDPChat(udpCon)
 		}
 	}
+}
+
+// generateCertificateForIP generates a self-signed certificate for the given IP address
+// and saves it to cert.pem and key.pem files
+func generateCertificateForIP(ipStr string) error {
+	// Parse the IP address
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return fmt.Errorf("invalid IP address: %s", ipStr)
+	}
+
+	// Generate RSA private key
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return fmt.Errorf("failed to generate private key: %v", err)
+	}
+
+	// Create certificate template
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization:  []string{"Test Organization"},
+			Country:       []string{"US"},
+			Province:      []string{""},
+			Locality:      []string{"Test City"},
+			StreetAddress: []string{""},
+			PostalCode:    []string{""},
+		},
+		NotBefore:   time.Now(),
+		NotAfter:    time.Now().Add(365 * 24 * time.Hour), // Valid for 1 year
+		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses: []net.IP{ip},
+		DNSNames:    []string{"localhost"}, // Add localhost for convenience
+	}
+
+	// Create the certificate
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate: %v", err)
+	}
+
+	// Save certificate to cert.pem
+	certOut, err := os.Create("cert.pem")
+	if err != nil {
+		return fmt.Errorf("failed to create cert.pem: %v", err)
+	}
+	defer certOut.Close()
+
+	err = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	if err != nil {
+		return fmt.Errorf("failed to write certificate: %v", err)
+	}
+
+	// Save private key to key.pem
+	keyOut, err := os.Create("key.pem")
+	if err != nil {
+		return fmt.Errorf("failed to create key.pem: %v", err)
+	}
+	defer keyOut.Close()
+
+	privateKeyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("failed to marshal private key: %v", err)
+	}
+
+	err = pem.Encode(keyOut, &pem.Block{Type: "PRIVATE KEY", Bytes: privateKeyDER})
+	if err != nil {
+		return fmt.Errorf("failed to write private key: %v", err)
+	}
+
+	fmt.Printf("Generated certificate for IP %s (cert.pem and key.pem)\n", ipStr)
+	return nil
 }
 
 func startTCPChat(conn net.Conn) {
