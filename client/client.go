@@ -40,24 +40,19 @@ type StunTurnOptions struct {
 
 // New creates a new StunTurn instance with the provided options
 func New(opts StunTurnOptions) *StunTurn {
-	// Set default values
 	tryCount := opts.TryCount
 	if tryCount == 0 {
-		tryCount = 300 // Default try count
+		tryCount = 300
 	}
 
 	timeoutSeconds := opts.TimeoutSeconds
 	if timeoutSeconds == 0 {
-		timeoutSeconds = 10 // Default timeout
+		timeoutSeconds = 30 * time.Second
 	}
 
 	stunDiscoveryTimeout := opts.UDPDiscoveryTimeout
 	if stunDiscoveryTimeout == 0 {
-		stunDiscoveryTimeout = 10 * time.Second // Default STUN discovery timeout
-	}
-
-	if opts.TLSConfig != nil {
-		fmt.Println("TLS ENABLED:", opts.IsTLSServer)
+		stunDiscoveryTimeout = 10 * time.Second
 	}
 
 	return &StunTurn{
@@ -119,7 +114,6 @@ func (st *StunTurn) GetTCPPeer() (err error) {
 		return err
 	}
 
-	// fmt.Printf("PEER: %+v", resp)
 	st.PeerResponse = &PeerResponse{
 		Protocol:    resp.Protocol,
 		LocalPort:   conn.LocalAddr().(*net.TCPAddr).Port,
@@ -143,7 +137,7 @@ func (st *StunTurn) GetClientPeer() (err error) {
 		return err
 	}
 
-	udpcon, udpaddr, err := st.discoverUdpAddr()
+	udpcon, udpaddr, err := st.DiscoverUdpAddr()
 	if err != nil {
 		return err
 	}
@@ -157,7 +151,6 @@ func (st *StunTurn) GetClientPeer() (err error) {
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
 		return err
 	}
-	// fmt.Printf("PEER: %+v", resp)
 	if resp.Protocol == "tcp" {
 		st.PeerResponse = &PeerResponse{
 			Protocol:    resp.Protocol,
@@ -192,7 +185,7 @@ func (st *StunTurn) GetUDPPeer() (err error) {
 		return err
 	}
 
-	udpcon, udpaddr, err := st.discoverUdpAddr()
+	udpcon, udpaddr, err := st.DiscoverUdpAddr()
 	if err != nil {
 		return err
 	}
@@ -360,16 +353,12 @@ func (st *StunTurn) PunchTCPHoleTLS() (net.Conn, error) {
 		return nil, errors.New("TLS configuration not provided")
 	}
 
-	// First establish the regular TCP connection
 	tcpConn, err := st.PunchTCPHole()
 	if err != nil {
 		return nil, err
 	}
 
-	// Wrap the connection with TLS
 	if st.IsTLSServer {
-		// This peer acts as TLS server
-		fmt.Println("SERVER HANDSHAKE..")
 		tlsConn := tls.Server(tcpConn, st.TLSConfig)
 		err = tlsConn.Handshake()
 		if err != nil {
@@ -378,8 +367,6 @@ func (st *StunTurn) PunchTCPHoleTLS() (net.Conn, error) {
 		}
 		return tlsConn, nil
 	} else {
-		// This peer acts as TLS client
-		fmt.Println("CLIENT HANDSHAKE..")
 		tlsConn := tls.Client(tcpConn, st.TLSConfig)
 		err = tlsConn.Handshake()
 		if err != nil {
@@ -390,9 +377,7 @@ func (st *StunTurn) PunchTCPHoleTLS() (net.Conn, error) {
 	}
 }
 
-// Convenience methods using default configuration
-
-func (st *StunTurn) discoverUdpAddr() (*net.UDPConn, *net.UDPAddr, error) {
+func (st *StunTurn) DiscoverUdpAddr() (*net.UDPConn, *net.UDPAddr, error) {
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 	if err != nil {
 		return nil, nil, err

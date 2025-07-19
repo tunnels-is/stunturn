@@ -76,6 +76,8 @@ func main() {
 				Certificates:     []tls.Certificate{tlscert},
 			}
 		}
+	} else {
+		tc = nil
 	}
 
 	isServer := false
