@@ -58,6 +58,7 @@ func main() {
 				MinVersion:       tls.VersionTLS13,
 				MaxVersion:       tls.VersionTLS13,
 				CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.CurveP521},
+				ServerName:       ipaddr,
 				RootCAs:          rootPool,
 			}
 
