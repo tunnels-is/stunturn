@@ -75,11 +75,19 @@ func main() {
 			panic(err)
 		}
 		if st.PeerResponse.Protocol == "tcp" {
-			tcpCon, err := st.PunchTCPHole()
-			if err != nil {
-				panic(err)
+			if st.TLSConfig != nil {
+				tcpCon, err := st.PunchTCPHoleTLS()
+				if err != nil {
+					panic(err)
+				}
+				startTCPChat(tcpCon)
+			} else {
+				tcpCon, err := st.PunchTCPHole()
+				if err != nil {
+					panic(err)
+				}
+				startTCPChat(tcpCon)
 			}
-			startTCPChat(tcpCon)
 		} else {
 			udpCon, err := st.PunchUDPHole()
 			if err != nil {
@@ -93,11 +101,19 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			tcpCon, err := st.PunchTCPHole()
-			if err != nil {
-				panic(err)
+			if st.TLSConfig != nil {
+				tcpCon, err := st.PunchTCPHoleTLS()
+				if err != nil {
+					panic(err)
+				}
+				startTCPChat(tcpCon)
+			} else {
+				tcpCon, err := st.PunchTCPHole()
+				if err != nil {
+					panic(err)
+				}
+				startTCPChat(tcpCon)
 			}
-			startTCPChat(tcpCon)
 		} else {
 			err := st.GetUDPPeer()
 			if err != nil {
