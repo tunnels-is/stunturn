@@ -66,10 +66,10 @@ func handleConnection(conn net.Conn) {
 	}
 
 	if hello.TargetIP == "" {
-		fmt.Printf("RC: %+v", hello)
+		// fmt.Printf("RC: %+v", hello)
 		receiver(conn, hello, clientPublicAddr)
 	} else {
-		fmt.Printf("IN: %+v", hello)
+		// fmt.Printf("IN: %+v", hello)
 		initiator(conn, hello, clientPublicAddr)
 	}
 }

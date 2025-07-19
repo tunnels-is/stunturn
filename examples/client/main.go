@@ -99,7 +99,6 @@ func startTCPChat(conn net.Conn) {
 	// Read input from user and send to peer
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
-		fmt.Print("You: ")
 		if !scanner.Scan() {
 			break
 		}
@@ -110,6 +109,7 @@ func startTCPChat(conn net.Conn) {
 		}
 
 		if message != "" {
+			fmt.Println("You:", string(message))
 			_, err := conn.Write([]byte(message))
 			if err != nil {
 				fmt.Println("Failed to send message:", err)
