@@ -20,10 +20,14 @@ import (
 )
 
 func main() {
-	ip := flag.String("ip", "", "target ip")
-	key := flag.String("key", "", "shared key")
-	proto := flag.String("proto", "tcp", "protocol (tcp/udp)")
-	tl := flag.String("tls", "", "set tls server or client (server/client)")
+	var ip string
+	var key string
+	var proto string
+	var tl string
+	flag.StringVar(&ip, "ip", "", "target ip")
+	flag.StringVar(&key, "key", "", "shared key")
+	flag.StringVar(&proto, "proto", "tcp", "protocol (tcp/udp)")
+	flag.StringVar(&tl, "tls", "", "set tls server or client (server/client)")
 	genCert := flag.String("gen-cert", "", "generate certificate for given IP address")
 	flag.Parse()
 
@@ -37,56 +41,46 @@ func main() {
 		return
 	}
 
-	ipaddr := ""
-	if ip != nil {
-		ipaddr = *ip
-	}
 	var tc *tls.Config
-	if tl != nil {
-		if *tl == "client" {
-			pub, err := os.ReadFile("./cert.pem")
-			if err != nil {
-				panic(err)
-			}
-			rootPool := x509.NewCertPool()
-			if !rootPool.AppendCertsFromPEM(pub) {
-				fmt.Println("Client: failed to append cert to pool")
-				return
-			}
-
-			tc = &tls.Config{
-				MinVersion:       tls.VersionTLS13,
-				MaxVersion:       tls.VersionTLS13,
-				CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.CurveP521},
-				ServerName:       ipaddr,
-				RootCAs:          rootPool,
-			}
-
-		} else {
-			pub, _ := os.ReadFile("./cert.pem")
-			pb, _ := os.ReadFile("./key.pem")
-			tlscert, err := tls.X509KeyPair(pub, pb)
-			if err != nil {
-				panic(err)
-			}
-			tc = &tls.Config{
-				MinVersion:       tls.VersionTLS13,
-				MaxVersion:       tls.VersionTLS13,
-				CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.CurveP521},
-				Certificates:     []tls.Certificate{tlscert},
-			}
+	if tl == "client" {
+		pub, err := os.ReadFile("./cert.pem")
+		if err != nil {
+			panic(err)
 		}
-	} else {
-		tc = nil
+		rootPool := x509.NewCertPool()
+		if !rootPool.AppendCertsFromPEM(pub) {
+			fmt.Println("Client: failed to append cert to pool")
+			return
+		}
+
+		tc = &tls.Config{
+			MinVersion:       tls.VersionTLS13,
+			MaxVersion:       tls.VersionTLS13,
+			CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.CurveP521},
+			ServerName:       ip,
+			RootCAs:          rootPool,
+		}
+
+	} else if tl == "server" {
+		pub, _ := os.ReadFile("./cert.pem")
+		pb, _ := os.ReadFile("./key.pem")
+		tlscert, err := tls.X509KeyPair(pub, pb)
+		if err != nil {
+			panic(err)
+		}
+		tc = &tls.Config{
+			MinVersion:       tls.VersionTLS13,
+			MaxVersion:       tls.VersionTLS13,
+			CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.CurveP521},
+			Certificates:     []tls.Certificate{tlscert},
+		}
 	}
 
 	isServer := false
-	if tl != nil {
-		if *tl == "client" {
-			isServer = false
-		} else {
-			isServer = true
-		}
+	if tl == "client" {
+		isServer = false
+	} else if tl == "server" {
+		isServer = true
 	}
 
 	st := client.New(client.StunTurnOptions{
@@ -95,13 +89,13 @@ func main() {
 		TryCount:            100,
 		TimeoutSeconds:      30 * time.Second,
 		UDPDiscoveryTimeout: 5 * time.Second,
-		Key:                 *key,
-		IP:                  ipaddr,
+		Key:                 key,
+		IP:                  ip,
 		TLSConfig:           tc,
 		IsTLSServer:         isServer,
 	})
 
-	if *ip == "" {
+	if ip == "" {
 		err := st.GetClientPeer()
 		if err != nil {
 			panic(err)
@@ -128,7 +122,7 @@ func main() {
 			startUDPChat(udpCon)
 		}
 	} else {
-		if *proto == "tcp" {
+		if proto == "tcp" {
 			err := st.GetTCPPeer()
 			if err != nil {
 				panic(err)

@@ -55,6 +55,10 @@ func New(opts StunTurnOptions) *StunTurn {
 		stunDiscoveryTimeout = 10 * time.Second
 	}
 
+	if opts.TLSConfig != nil {
+		fmt.Println("TLS ENABLED", opts.TLSConfig)
+	}
+
 	return &StunTurn{
 		SignalServer:        opts.SignalServer,
 		Dialer:              opts.Dialer,
