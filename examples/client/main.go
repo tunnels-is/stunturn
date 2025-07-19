@@ -27,7 +27,10 @@ func main() {
 	var tc *tls.Config
 	if tl != nil {
 		if *tl == "client" {
-			pub, _ := os.ReadFile("./cert.pem")
+			pub, err := os.ReadFile("./cert.pem")
+			if err != nil {
+				panic(err)
+			}
 			rootPool := x509.NewCertPool()
 			if !rootPool.AppendCertsFromPEM(pub) {
 				fmt.Println("Client: failed to append cert to pool")
@@ -138,7 +141,7 @@ func startTCPChat(conn net.Conn) {
 		for {
 			n, err := conn.Read(buffer)
 			if err != nil {
-				fmt.Println("\nPeer disconnected.", err)
+				fmt.Println("\nPeer disconnected.")
 				os.Exit(0)
 			}
 			message := strings.TrimSpace(string(buffer[:n]))
