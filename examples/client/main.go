@@ -78,6 +78,15 @@ func main() {
 		}
 	}
 
+	isServer := false
+	if tl != nil {
+		if *tl == "client" {
+			isServer = false
+		} else {
+			isServer = true
+		}
+	}
+
 	st := client.New(client.StunTurnOptions{
 		SignalServer:        "192.248.170.119:1111",
 		Dialer:              nil,
@@ -87,15 +96,8 @@ func main() {
 		Key:                 *key,
 		IP:                  ipaddr,
 		TLSConfig:           tc,
+		IsTLSServer:         isServer,
 	})
-
-	if tl != nil {
-		if *tl == "client" {
-			st.IsTLSServer = false
-		} else {
-			st.IsTLSServer = true
-		}
-	}
 
 	if *ip == "" {
 		err := st.GetClientPeer()

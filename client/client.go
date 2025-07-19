@@ -56,11 +56,8 @@ func New(opts StunTurnOptions) *StunTurn {
 		stunDiscoveryTimeout = 10 * time.Second // Default STUN discovery timeout
 	}
 
-	// Setup TLS configuration
-	var tlsConfig *tls.Config
 	if opts.TLSConfig != nil {
-		// Use the provided TLS configuration
-		tlsConfig = opts.TLSConfig
+		fmt.Println("TLS ENABLED:", opts.IsTLSServer)
 	}
 
 	return &StunTurn{
@@ -71,7 +68,7 @@ func New(opts StunTurnOptions) *StunTurn {
 		UDPDiscoveryTimeout: stunDiscoveryTimeout,
 		Key:                 opts.Key,
 		IP:                  opts.IP,
-		TLSConfig:           tlsConfig,
+		TLSConfig:           opts.TLSConfig,
 		IsTLSServer:         opts.IsTLSServer,
 	}
 }
