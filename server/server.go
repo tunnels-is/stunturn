@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -65,8 +66,10 @@ func handleConnection(conn net.Conn) {
 	}
 
 	if hello.TargetIP == "" {
+		fmt.Printf("RC: %+v", hello)
 		receiver(conn, hello, clientPublicAddr)
 	} else {
+		fmt.Printf("IN: %+v", hello)
 		initiator(conn, hello, clientPublicAddr)
 	}
 }
