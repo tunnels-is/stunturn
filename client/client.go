@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,8 @@ type StunTurn struct {
 	key                  string
 	ip                   string
 	peerResponse         *PeerResponse
+	tlsConfig            *tls.Config
+	isTLSServer          bool
 }
 
 // StunTurnOptions contains configuration options for StunTurn
@@ -31,6 +34,8 @@ type StunTurnOptions struct {
 	StunDiscoveryTimeout time.Duration // Timeout for STUN discovery (default: 10 seconds)
 	Key                  string        // UUID key for peer identification
 	IP                   string        // Target IP address
+	TLSConfig            *tls.Config   // TLS configuration (optional, for encrypted connections)
+	IsTLSServer          bool          // Whether this peer should act as TLS server
 }
 
 // New creates a new StunTurn instance with the provided options
@@ -51,6 +56,13 @@ func New(opts StunTurnOptions) *StunTurn {
 		stunDiscoveryTimeout = 10 * time.Second // Default STUN discovery timeout
 	}
 
+	// Setup TLS configuration
+	var tlsConfig *tls.Config
+	if opts.TLSConfig != nil {
+		// Use the provided TLS configuration
+		tlsConfig = opts.TLSConfig
+	}
+
 	return &StunTurn{
 		signalServer:         opts.SignalServer,
 		dialer:               opts.Dialer,
@@ -59,6 +71,8 @@ func New(opts StunTurnOptions) *StunTurn {
 		stunDiscoveryTimeout: stunDiscoveryTimeout,
 		key:                  opts.Key,
 		ip:                   opts.IP,
+		tlsConfig:            tlsConfig,
+		isTLSServer:          opts.IsTLSServer,
 	}
 }
 
@@ -331,6 +345,40 @@ func (st *StunTurn) PunchTCPHole() (net.Conn, error) {
 	}
 }
 
+// PunchTCPHoleTLS attempts to establish a TLS-enabled TCP hole punch connection
+func (st *StunTurn) PunchTCPHoleTLS() (net.Conn, error) {
+	if st.tlsConfig == nil {
+		return nil, errors.New("TLS configuration not provided")
+	}
+
+	// First establish the regular TCP connection
+	tcpConn, err := st.PunchTCPHole()
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap the connection with TLS
+	if st.isTLSServer {
+		// This peer acts as TLS server
+		tlsConn := tls.Server(tcpConn, st.tlsConfig)
+		err = tlsConn.Handshake()
+		if err != nil {
+			tcpConn.Close()
+			return nil, fmt.Errorf("TLS server handshake failed: %v", err)
+		}
+		return tlsConn, nil
+	} else {
+		// This peer acts as TLS client
+		tlsConn := tls.Client(tcpConn, st.tlsConfig)
+		err = tlsConn.Handshake()
+		if err != nil {
+			tcpConn.Close()
+			return nil, fmt.Errorf("TLS client handshake failed: %v", err)
+		}
+		return tlsConn, nil
+	}
+}
+
 // Convenience methods using default configuration
 
 func (st *StunTurn) discoverUdpAddr() (*net.UDPConn, *net.UDPAddr, error) {
@@ -377,4 +425,14 @@ var controlFunc = func(network, address string, c syscall.RawConn) error {
 		return err
 	}
 	return controlErr
+}
+
+// HasTLS returns true if TLS is configured for this StunTurn instance
+func (st *StunTurn) HasTLS() bool {
+	return st.tlsConfig != nil
+}
+
+// IsTLSServer returns true if this peer is configured as a TLS server
+func (st *StunTurn) IsTLSServer() bool {
+	return st.isTLSServer
 }
