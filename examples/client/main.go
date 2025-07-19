@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"net"
@@ -16,11 +18,45 @@ func main() {
 	ip := flag.String("ip", "", "target ip")
 	key := flag.String("key", "", "shared key")
 	proto := flag.String("proto", "tcp", "protocol (tcp/udp)")
+	tl := flag.String("tls", "", "set tls server or client (server/client)")
 	flag.Parse()
 	ipaddr := ""
 	if ip != nil {
 		ipaddr = *ip
 	}
+	var tc *tls.Config
+	if tl != nil {
+		if *tl == "client" {
+			pub, _ := os.ReadFile("./cert.pem")
+			rootPool := x509.NewCertPool()
+			if !rootPool.AppendCertsFromPEM(pub) {
+				fmt.Println("Client: failed to append cert to pool")
+				return
+			}
+
+			tc = &tls.Config{
+				MinVersion:       tls.VersionTLS13,
+				MaxVersion:       tls.VersionTLS13,
+				CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.CurveP521},
+				RootCAs:          rootPool,
+			}
+
+		} else {
+			pub, _ := os.ReadFile("./cert.pem")
+			pb, _ := os.ReadFile("./key.pem")
+			tlscert, err := tls.X509KeyPair(pub, pb)
+			if err != nil {
+				panic(err)
+			}
+			tc = &tls.Config{
+				MinVersion:       tls.VersionTLS13,
+				MaxVersion:       tls.VersionTLS13,
+				CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.CurveP521},
+				Certificates:     []tls.Certificate{tlscert},
+			}
+		}
+	}
+
 	st := client.New(client.StunTurnOptions{
 		SignalServer:        "192.248.170.119:1111",
 		Dialer:              nil,
@@ -29,7 +65,7 @@ func main() {
 		UDPDiscoveryTimeout: 5 * time.Second,
 		Key:                 *key,
 		IP:                  ipaddr,
-		TLSConfig:           nil,
+		TLSConfig:           tc,
 		IsTLSServer:         false,
 	})
 
